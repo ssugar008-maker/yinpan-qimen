@@ -155,6 +155,7 @@ export default function App() {
     }
   }, [submitted]);
 
+  const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
   const onChange = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const onSubmit = (e) => { e.preventDefault(); setSubmitted({ ...form }); };
   const setNow = () => {
@@ -171,6 +172,9 @@ export default function App() {
     <div className="page">
       <h1 className="title">陰盤奇門排盤（時盤）</h1>
 
+      <details className="panel collapsible" open={!isMobile}>
+        <summary className="panel-head">排盤輸入</summary>
+        <div className="panel-body">
       <form className="form" onSubmit={onSubmit}>
         <label>姓名
           <input value={form.name} onChange={onChange('name')} placeholder="選填" />
@@ -198,12 +202,14 @@ export default function App() {
         </label>
         <button type="submit" className="btn primary">排盤</button>
         <button type="button" className="btn" onClick={setNow}>當前時間</button>
-      </form>
+          </form>
+        </div>
+      </details>
 
       {result && (
         <ErrorBoundary>
-          <div className="panel">
-            <div className="panel-head">基本信息</div>
+          <details className="panel collapsible" open={!isMobile}>
+            <summary className="panel-head">基本信息</summary>
             <div className="panel-body info-grid">
               <div>
                 <InfoRow label="姓名" value={`${submitted.name || '（未填）'}（${t(submitted.sex)}）`} />
@@ -223,7 +229,7 @@ export default function App() {
                 <InfoRow label="空亡" value={`${result.xunKong[3].join('')}空 落${result.kongPalaces.map((p) => PALACE_SHORT[p]).join('、')}宮`} valueClass="hd-green" />
               </div>
             </div>
-          </div>
+          </details>
 
           <div className="panel">
             <div className="panel-head">四柱八字（直式）</div>

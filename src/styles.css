@@ -312,13 +312,73 @@ body {
 }
 .legend .sw { font-weight: 700; padding: 0 2px; }
 
+/* 防止宮位內文字逐字換行（手機窄屏尤其需要） */
+.god, .star, .door, .stem, .palace-name, .waigan, .mark,
+.bazi-char, .bazi-head, .horse-badge { white-space: nowrap; }
+
+/* 可收合面板（手機預設收合，桌面預設展開） */
+details.collapsible > summary.panel-head {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  position: relative;
+}
+details.collapsible > summary.panel-head::-webkit-details-marker { display: none; }
+details.collapsible > summary.panel-head::after {
+  content: '▾';
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--accent);
+  font-size: 13px;
+}
+details.collapsible:not([open]) > summary.panel-head::after { content: '▸'; }
+details.collapsible:not([open]) > summary.panel-head { border-bottom: none; }
+/* 收合面板內的表單融入面板，不另占外框與下距 */
+details.collapsible .form { background: transparent; border: none; padding: 0; margin-bottom: 0; }
+
+/* 桌面版：面板恆展開、不顯示收合箭頭、標題不可點（外觀與原本一致） */
+@media (min-width: 641px) {
+  details.collapsible > summary.panel-head { pointer-events: none; cursor: default; }
+  details.collapsible > summary.panel-head::after { display: none; }
+}
+
 @media (max-width: 640px) {
-  .info-grid { grid-template-columns: 1fr; }
-  .grid-wrap { padding: 22px 20px; }
-  .stem { font-size: 18px; }
-  .star { font-size: 16px; }
-  .door { font-size: 15px; }
-  .waigan { font-size: 15px; }
-  .cell { min-height: 138px; padding: 5px; }
-  .stems { margin-left: 16px; }
+  .page { padding: 10px 8px 44px; }
+  .title { font-size: 19px; letter-spacing: 2px; margin: 4px 0 10px; }
+  .panel { margin-bottom: 10px; }
+  .panel-head { padding: 7px 12px; font-size: 14px; }
+  .panel-body { padding: 8px; }
+  .info-grid { grid-template-columns: 1fr; gap: 2px; }
+  .info-row { font-size: 13px; padding: 3px 0; }
+
+  /* 四柱直式：compact */
+  .bazi-strip { gap: 6px; }
+  .bazi-col { min-width: 46px; padding: 5px 0 6px; }
+  .bazi-head { font-size: 11px; padding-bottom: 4px; margin-bottom: 5px; }
+  .bazi-char { font-size: 19px; }
+
+  /* 九宮格：compact，確保文字不換行且四柱+盤同屏 */
+  .grid-wrap { padding: 20px 20px; }
+  .grid { gap: 4px; }
+  .cell { min-height: 106px; padding: 4px 3px; }
+  .cell-mid { gap: 3px; padding: 15px 0 2px; }
+  .stems { min-width: 17px; margin-left: 17px; }
+  .stem { font-size: 15px; }
+  .stem-sep { width: 12px; }
+  .god { font-size: 11px; }
+  .star { font-size: 13px; }
+  .door { font-size: 13px; margin-top: 3px; }
+  .horse-slot { min-width: 0; }
+  .horse-slot:empty { display: none; }
+  .horse-badge { width: 17px; height: 17px; line-height: 17px; font-size: 11px; }
+  .palace-name { font-size: 10px; }
+  .marks { gap: 2px; }
+  .mark { font-size: 11px; }
+  .waigan { font-size: 12px; }
+  .kong-panel { top: 3px; left: 3px; gap: 1px; }
+  .kong-box { width: 14px; height: 14px; font-size: 9px; line-height: 14px; }
+  .void-circle { width: 10px; height: 10px; top: 4px; right: 4px; border-width: 1.5px; }
+  .legend { font-size: 11px; gap: 4px 10px; margin-top: 8px; }
 }
