@@ -52,6 +52,28 @@ function Stem({ text, type }) {
   return <div className={`stem ${stemMarkClass(type)}`}>{t(text)}</div>;
 }
 
+// 四柱八字直式排列：年 / 月 / 日 / 時 各為一柱（上干下支），末柱為時柱空亡
+function BaZiStrip({ result }) {
+  const heads = ['年', '月', '日', '時'];
+  const hourKong = result.xunKong[3]; // 時柱空亡（盤中空亡宮所據）
+  return (
+    <div className="bazi-strip">
+      {result.pillars.map((gz, i) => (
+        <div className="bazi-col" key={i}>
+          <div className="bazi-head">{heads[i]}柱</div>
+          <div className="bazi-char">{t(gz[0])}</div>
+          <div className="bazi-char">{t(gz[1])}</div>
+        </div>
+      ))}
+      <div className="bazi-col bazi-kong">
+        <div className="bazi-head">空亡</div>
+        <div className="bazi-char">{t(hourKong[0])}</div>
+        <div className="bazi-char">{t(hourKong[1])}</div>
+      </div>
+    </div>
+  );
+}
+
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(error) { return { error }; }
@@ -77,6 +99,7 @@ function PalaceCell({ data, result }) {
     data.isKong,
   ];
   const isHorse = result.horse.palace === p;
+  const isVoid = result.kongPalaces.includes(p); // 時柱空亡落宮 → 標小圈
 
   // 左側竖排：天盤干（可多个）在上，地盤干（+寄宫干）在下
   const tianStems = (data.tianGan || []).map((s, i) => ({ s, type: data.stemMarks?.[i]?.type }));
@@ -91,8 +114,8 @@ function PalaceCell({ data, result }) {
       <div className="kong-panel">
         {KONG_LABELS.map((lab, i) => (kongActive[i] ? <span key={lab} className="kong-box on">{lab}</span> : null))}
       </div>
-      {/* 八神：右上（黑色） */}
-      <div className="god">{t(data.god || '')}</div>
+      {/* 空亡小圈：右上 */}
+      {isVoid && <div className="void-circle" title="空亡" />}
 
       <div className="cell-mid">
         <div className="stems">
@@ -101,6 +124,7 @@ function PalaceCell({ data, result }) {
           {diStems.map((x, i) => <Stem key={'d' + i} text={x.s} type={x.type} />)}
         </div>
         <div className="center-info">
+          <div className="god">{t(data.god || '')}</div>
           <div className="star">{t(data.stars.join(''))}</div>
           <div className={`door${data.menpo ? ' mk-green' : ''}`}>{t(data.door)}</div>
         </div>
@@ -191,7 +215,6 @@ export default function App() {
                 <InfoRow label="月將" value={t(result.yueJiang)} valueClass="hd-red" />
               </div>
               <div>
-                <InfoRow label="四柱" value={result.pillars.map((g, i) => t(g) + '年月日時'[i]).join(' ')} valueClass="hd-red" />
                 <InfoRow label="旬空" value={result.xunKong.map((k) => k.join('') + '空').join(' ')} valueClass="hd-blue" />
                 <InfoRow label="旬首" value={t(result.xunShou)} valueClass="hd-green" />
                 <InfoRow label="定局" value={t(`${result.dun}遁${result.ju}局（時盤）`)} valueClass="hd-red" />
@@ -203,15 +226,25 @@ export default function App() {
           </div>
 
           <div className="panel">
+            <div className="panel-head">四柱八字（直式）</div>
+            <div className="panel-body">
+              <BaZiStrip result={result} />
+            </div>
+          </div>
+
+          <div className="panel">
             <div className="panel-head">陰盤奇門盤</div>
             <div className="panel-body">
               <div className="grid-wrap">
                 <div className="grid">
                   {GRID.map((p) => <PalaceCell key={p} data={result.palaces[p]} result={result} />)}
                 </div>
-                {/* 外干（隐干）：贴各宮外側方位 */}
+                {/* 外干（隐干）：贴各宮外側方位；中五宮外干寄 waiganJiGong 宮並列 */}
                 {[4, 9, 2, 3, 7, 8, 1, 6].map((p) => (
-                  <span key={p} className={`waigan wg-${WAIGAN_POS[p].edge}`} style={WAIGAN_POS[p].style}>{t(result.waigan[p])}</span>
+                  <span key={p} className={`waigan wg-${WAIGAN_POS[p].edge}`} style={WAIGAN_POS[p].style}>
+                    {t(result.waigan[p])}
+                    {p === result.waiganJiGong && <span className="waigan-ji">{t(result.waiganCenter)}</span>}
+                  </span>
                 ))}
               </div>
               <div className="legend">

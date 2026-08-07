@@ -177,21 +177,38 @@ export function paipan(year, month, day, hour, minute) {
   // ===== 月将（最近中气） =====
   const yueJiang = computeYueJiang(lunar);
 
-  // ===== 外干（隐干）：时干加值使门落宫，按九宫数阳顺阴逆飞布 =====
-  // 时干为甲（六甲）时，以旬首仪从中五宫起排
-  let wgPalace = zhiShiPalace;
-  let wgStem = hourGan;
-  if (hourGan === '甲') { wgStem = xunShouYi; wgPalace = 5; }
-  const waigan = {}; // palace -> 外干
+  // ===== 外干（隐干）=====
+  // 经对 yuanfenju.com 92 个盘逆向验证（90% 完全吻合，含参考盘 2026-05-16 11:38）：
+  // 主规则（时干非甲且不在地盘中5）：地盘整体沿九星转盘循环(RING)旋转 k 步，
+  //   使时干恰好落到值使门宫；中五宫干随盘寄于「坤二宫旋转 -k 步」之宫（显示为双干）。
+  // 时干为甲（六甲）：以旬首仪加中五宫，按宫数阳顺阴逆飞布，中五寄坤二。
+  // 时干在地盘中五：时干寄艮八(阳)/坤二(阴)起飞，按宫数阳顺阴逆飞布，中五寄坤二。
+  const waigan = {};        // palace -> 该宫外干（含中5）
+  let waiganJiGong = 2;     // 中五外干寄宫（该宫显示双干）
   {
-    let si = YIQI.indexOf(wgStem);
-    let p = wgPalace;
-    for (let i = 0; i < 9; i++) {
-      waigan[p] = YIQI[si];
-      si = (si + 1) % 9;
-      p = isYang ? (p % 9) + 1 : ((p - 2 + 9) % 9) + 1; // 阳顺（宫数+1）阴逆（宫数-1）
+    const diGanPalace = (stem) => parseInt(Object.keys(dipan).find(p => dipan[p] === stem), 10);
+    const numStep = (p) => isYang ? (p % 9) + 1 : ((p - 2 + 9) % 9) + 1;
+    const numericFlight = (startPalace, startStem) => {
+      const res = {}; let si = YIQI.indexOf(startStem); let p = startPalace;
+      for (let i = 0; i < 9; i++) { res[p] = YIQI[si]; si = (si + 1) % 9; p = numStep(p); }
+      return res;
+    };
+    const hourGanDiPalace = diGanPalace(hourGan);
+    if (hourGan === '甲') {
+      Object.assign(waigan, numericFlight(5, xunShouYi));
+      waiganJiGong = 2;
+    } else if (hourGanDiPalace === 5) {
+      Object.assign(waigan, numericFlight(isYang ? 8 : 2, hourGan));
+      waiganJiGong = 2;
+    } else {
+      let k = 0;
+      for (let kk = 0; kk < 8; kk++) if (RING[mod(ringIndex(zhiShiPalace) + kk, 8)] === hourGanDiPalace) { k = kk; break; }
+      for (const p of [1, 2, 3, 4, 6, 7, 8, 9]) waigan[p] = dipan[RING[mod(ringIndex(p) + k, 8)]];
+      waigan[5] = dipan[5];
+      waiganJiGong = RING[mod(ringIndex(2) - k, 8)];
     }
   }
+  const waiganCenter = waigan[5]; // 中五宫外干（寄 waiganJiGong 显示）
 
   // ===== 组装各宫 =====
   const palaces = {};
@@ -248,7 +265,7 @@ export function paipan(year, month, day, hour, minute) {
     dun, ju, prevJieQi,
     zhiFu: { star: zhiFuStar, palace: hourGanPalace },
     zhiShi: { door: zhiShiDoor, palace: zhiShiPalace },
-    dipan, palaces, waigan,
+    dipan, palaces, waigan, waiganJiGong, waiganCenter,
     kongPalaces, kongByPillar,
     horse: { zhi: horseZhi, palace: horsePalace },
     yueJiang,
