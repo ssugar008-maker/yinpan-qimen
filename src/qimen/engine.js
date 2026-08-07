@@ -174,6 +174,17 @@ export function paipan(year, month, day, hour, minute) {
   const horseZhi = HORSE[timeGZ[1]];
   const horsePalace = ZHI_PALACE[horseZhi];
 
+  // ===== 四柱天干落天盤之宮（宮位左上角標記 年/月/日/時）=====
+  // 各柱天干（甲則遁其旬首儀）在天盤所落之宮
+  const pillarMarkPalaces = pillars.map((gz, i) => {
+    let stem = gz[0];
+    if (stem === '甲') stem = XUNSHOU_YI[xuns[i].xunShou]; // 甲遁旬首儀
+    for (const p of [1, 2, 3, 4, 6, 7, 8, 9]) {
+      if ((tianpanGan[p] || []).includes(stem)) return p;
+    }
+    return null;
+  });
+
   // ===== 月将（最近中气） =====
   const yueJiang = computeYueJiang(lunar);
 
@@ -267,6 +278,7 @@ export function paipan(year, month, day, hour, minute) {
     zhiShi: { door: zhiShiDoor, palace: zhiShiPalace },
     dipan, palaces, waigan, waiganJiGong, waiganCenter,
     kongPalaces, kongByPillar,
+    pillarMarkPalaces,
     horse: { zhi: horseZhi, palace: horsePalace },
     yueJiang,
     lunarMonth, lunarDay,

@@ -19,7 +19,7 @@ const PALACE_SHORT = {
 };
 // 洛书九宫布局：巽4 离9 坤2 / 震3 中5 兑7 / 艮8 坎1 乾6
 const GRID = [4, 9, 2, 3, 5, 7, 8, 1, 6];
-const KONG_LABELS = ['年', '月', '日', '時', '空'];
+const PILLAR_LABELS = ['年', '月', '日', '時']; // 各柱天干落天盤之宮 → 標於該宮左上
 
 // 外干（隐干）在九宮格外的方位（依各宮洛书方位贴边）
 const WAIGAN_POS = {
@@ -91,13 +91,8 @@ class ErrorBoundary extends React.Component {
 
 function PalaceCell({ data, result }) {
   const p = data.palace;
-  const kongActive = [
-    result.kongByPillar[0].includes(p),
-    result.kongByPillar[1].includes(p),
-    result.kongByPillar[2].includes(p),
-    result.kongByPillar[3].includes(p),
-    data.isKong,
-  ];
+  // 四柱天干（甲遁旬首儀）落天盤之宮 → 標 年/月/日/時
+  const pillarMarks = [0, 1, 2, 3].map((i) => result.pillarMarkPalaces[i] === p);
   const isHorse = result.horse.palace === p;
   const isVoid = result.kongPalaces.includes(p); // 時柱空亡落宮 → 標小圈
 
@@ -112,7 +107,7 @@ function PalaceCell({ data, result }) {
     <div className={`cell${p === 5 ? ' center' : ''}`}>
       {/* 年月日時空：左上，竖排（仅点亮该柱空亡落此宫者） */}
       <div className="kong-panel">
-        {KONG_LABELS.map((lab, i) => (kongActive[i] ? <span key={lab} className="kong-box on">{lab}</span> : null))}
+        {PILLAR_LABELS.map((lab, i) => (pillarMarks[i] ? <span key={lab} className="kong-box on">{lab}</span> : null))}
       </div>
       {/* 空亡小圈：右上 */}
       {isVoid && <div className="void-circle" title="空亡" />}
