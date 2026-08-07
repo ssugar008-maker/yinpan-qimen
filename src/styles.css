@@ -1,8 +1,10 @@
 :root {
   --green: #16a34a;
   --red: #dc2626;
+  --grey: #9aa0a6;
+  --purple: #8b33c9;
   --blue: #2563eb;
-  --ink: #1f2937;
+  --black: #111111;
   --line: #d8cfc0;
   --bg: #f5f1e8;
   --panel: #fffdf8;
@@ -14,13 +16,13 @@
 body {
   margin: 0;
   background: var(--bg);
-  color: var(--ink);
-  font-family: "Noto Serif SC", "Songti SC", "SimSun", "Microsoft YaHei", serif;
+  color: var(--black);
+  font-family: "Noto Serif TC", "Songti TC", "PMingLiU", "Noto Serif SC", "SimSun", serif;
   -webkit-font-smoothing: antialiased;
 }
 
 .page {
-  max-width: 880px;
+  max-width: 920px;
   margin: 0 auto;
   padding: 20px 16px 60px;
 }
@@ -60,7 +62,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fff;
-  color: var(--ink);
+  color: var(--black);
   min-width: 72px;
 }
 .form input { min-width: 110px; }
@@ -72,7 +74,7 @@ body {
   border-radius: 6px;
   background: #fff;
   cursor: pointer;
-  color: var(--ink);
+  color: var(--black);
 }
 .btn.primary {
   background: var(--accent);
@@ -112,58 +114,80 @@ body {
 .info-label { color: #6b7280; white-space: nowrap; }
 .info-value { font-weight: 600; }
 
-.st-green { color: var(--green); }
-.st-red { color: var(--red); }
-.st-blue { color: var(--blue); }
+/* 头部信息着色 */
+.hd-green { color: var(--green); }
+.hd-red { color: var(--red); }
+.hd-blue { color: var(--blue); }
+
+/* 盘内标记着色：破绿 刑红 墓灰 墓刑紫，其余黑 */
+.mk-green { color: var(--green) !important; }
+.mk-red { color: var(--red) !important; }
+.mk-grey { color: var(--grey) !important; }
+.mk-purple { color: var(--purple) !important; }
 
 /* ---- 九宫格 ---- */
+.grid-wrap {
+  position: relative;
+  padding: 26px 30px; /* 给外圈外干留位 */
+}
 .grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
 }
+.waigan {
+  position: absolute;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--black);
+  line-height: 1;
+}
+.wg-top, .wg-bottom { transform: translate(-50%, 0); }
+.wg-left, .wg-right { transform: translate(0, -50%); }
+
 .cell {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fff;
-  min-height: 150px;
+  min-height: 158px;
   padding: 6px 8px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-end;
 }
-.cell.center {
-  background: #faf6ec;
-}
+.cell.center { background: #faf6ec; }
 
-.cell-top {
+/* 年月日時空：左上竖排 */
+.kong-panel {
+  position: absolute;
+  top: 5px;
+  left: 5px;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  min-height: 20px;
+  flex-direction: column;
+  gap: 2px;
 }
-.kong-panel { display: flex; gap: 2px; }
 .kong-box {
   width: 17px;
   height: 17px;
   font-size: 11px;
   line-height: 17px;
   text-align: center;
-  border: 1px solid #e3d9c6;
+  border: 1px solid var(--accent);
   border-radius: 3px;
-  color: #d6ccba;
-  background: #fbf9f4;
-}
-.kong-box.on {
   background: var(--accent);
-  border-color: var(--accent);
   color: #fff;
   font-weight: 700;
 }
+
+/* 八神：右上（黑） */
 .god {
+  position: absolute;
+  top: 5px;
+  right: 7px;
   font-size: 15px;
   font-weight: 700;
-  color: var(--red);
+  color: var(--black);
 }
 
 .cell-mid {
@@ -171,18 +195,20 @@ body {
   align-items: center;
   gap: 6px;
   flex: 1;
-  padding: 4px 0;
+  padding: 20px 0 4px; /* 顶部给 年月日時空/八神 让位 */
 }
 .stems {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 22px;
+  min-width: 24px;
+  margin-left: 20px; /* 避开左侧竖排年月日時空 */
 }
 .stem {
-  font-size: 20px;
+  font-size: 21px;
   font-weight: 700;
   line-height: 1.15;
+  color: var(--black);
 }
 .stem-sep {
   width: 16px;
@@ -197,15 +223,14 @@ body {
 .star {
   font-size: 19px;
   font-weight: 700;
-  color: #7c3aed;
+  color: var(--black);
 }
 .door {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
-  color: var(--blue);
+  color: var(--black);
   margin-top: 6px;
 }
-.door.menpo { color: var(--red); }
 .horse-slot { min-width: 24px; text-align: center; }
 .horse-badge {
   display: inline-block;
@@ -231,7 +256,7 @@ body {
 .palace-name { font-size: 13px; color: #9a8f7c; }
 
 .legend {
-  margin-top: 12px;
+  margin-top: 14px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px 18px;
@@ -242,8 +267,11 @@ body {
 
 @media (max-width: 640px) {
   .info-grid { grid-template-columns: 1fr; }
-  .stem { font-size: 17px; }
+  .grid-wrap { padding: 22px 20px; }
+  .stem { font-size: 18px; }
   .star { font-size: 16px; }
   .door { font-size: 15px; }
-  .cell { min-height: 128px; padding: 5px; }
+  .waigan { font-size: 15px; }
+  .cell { min-height: 138px; padding: 5px; }
+  .stems { margin-left: 16px; }
 }

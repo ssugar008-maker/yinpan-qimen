@@ -177,6 +177,22 @@ export function paipan(year, month, day, hour, minute) {
   // ===== 月将（最近中气） =====
   const yueJiang = computeYueJiang(lunar);
 
+  // ===== 外干（隐干）：时干加值使门落宫，按九宫数阳顺阴逆飞布 =====
+  // 时干为甲（六甲）时，以旬首仪从中五宫起排
+  let wgPalace = zhiShiPalace;
+  let wgStem = hourGan;
+  if (hourGan === '甲') { wgStem = xunShouYi; wgPalace = 5; }
+  const waigan = {}; // palace -> 外干
+  {
+    let si = YIQI.indexOf(wgStem);
+    let p = wgPalace;
+    for (let i = 0; i < 9; i++) {
+      waigan[p] = YIQI[si];
+      si = (si + 1) % 9;
+      p = isYang ? (p % 9) + 1 : ((p - 2 + 9) % 9) + 1; // 阳顺（宫数+1）阴逆（宫数-1）
+    }
+  }
+
   // ===== 组装各宫 =====
   const palaces = {};
   for (const p of [1, 2, 3, 4, 6, 7, 8, 9]) {
@@ -232,7 +248,7 @@ export function paipan(year, month, day, hour, minute) {
     dun, ju, prevJieQi,
     zhiFu: { star: zhiFuStar, palace: hourGanPalace },
     zhiShi: { door: zhiShiDoor, palace: zhiShiPalace },
-    dipan, palaces,
+    dipan, palaces, waigan,
     kongPalaces, kongByPillar,
     horse: { zhi: horseZhi, palace: horsePalace },
     yueJiang,
