@@ -1,0 +1,6 @@
+node_modules
+dist
+*.local
+.DS_Store
+app_shot*.png
+.vercel

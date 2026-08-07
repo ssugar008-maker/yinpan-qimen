@@ -1,0 +1,249 @@
+:root {
+  --green: #16a34a;
+  --red: #dc2626;
+  --blue: #2563eb;
+  --ink: #1f2937;
+  --line: #d8cfc0;
+  --bg: #f5f1e8;
+  --panel: #fffdf8;
+  --accent: #8b5a2b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Noto Serif SC", "Songti SC", "SimSun", "Microsoft YaHei", serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 20px 16px 60px;
+}
+
+.title {
+  text-align: center;
+  font-size: 26px;
+  letter-spacing: 4px;
+  color: var(--accent);
+  margin: 8px 0 18px;
+}
+
+/* ---- form ---- */
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  justify-content: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 18px;
+}
+.form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  color: #6b7280;
+  gap: 4px;
+}
+.form input, .form select {
+  font-family: inherit;
+  font-size: 15px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  min-width: 72px;
+}
+.form input { min-width: 110px; }
+.btn {
+  font-family: inherit;
+  font-size: 15px;
+  padding: 7px 18px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  color: var(--ink);
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.btn:hover { filter: brightness(0.96); }
+
+/* ---- panel ---- */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 18px;
+  overflow: hidden;
+}
+.panel-head {
+  background: #efe7d8;
+  padding: 9px 14px;
+  font-weight: 700;
+  color: var(--accent);
+  border-bottom: 1px solid var(--line);
+}
+.panel-body { padding: 14px; }
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 24px;
+}
+.info-row {
+  display: flex;
+  padding: 4px 0;
+  font-size: 15px;
+  border-bottom: 1px dashed #eee4d3;
+}
+.info-label { color: #6b7280; white-space: nowrap; }
+.info-value { font-weight: 600; }
+
+.st-green { color: var(--green); }
+.st-red { color: var(--red); }
+.st-blue { color: var(--blue); }
+
+/* ---- 九宫格 ---- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.cell {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  min-height: 150px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.cell.center {
+  background: #faf6ec;
+}
+
+.cell-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  min-height: 20px;
+}
+.kong-panel { display: flex; gap: 2px; }
+.kong-box {
+  width: 17px;
+  height: 17px;
+  font-size: 11px;
+  line-height: 17px;
+  text-align: center;
+  border: 1px solid #e3d9c6;
+  border-radius: 3px;
+  color: #d6ccba;
+  background: #fbf9f4;
+}
+.kong-box.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+.god {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--red);
+}
+
+.cell-mid {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  padding: 4px 0;
+}
+.stems {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 22px;
+}
+.stem {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.stem-sep {
+  width: 16px;
+  height: 1px;
+  background: #e0d6c3;
+  margin: 2px 0;
+}
+.center-info {
+  flex: 1;
+  text-align: center;
+}
+.star {
+  font-size: 19px;
+  font-weight: 700;
+  color: #7c3aed;
+}
+.door {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--blue);
+  margin-top: 6px;
+}
+.door.menpo { color: var(--red); }
+.horse-slot { min-width: 24px; text-align: center; }
+.horse-badge {
+  display: inline-block;
+  background: var(--green);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  border-radius: 50%;
+  text-align: center;
+}
+
+.cell-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  min-height: 20px;
+}
+.marks { display: flex; gap: 4px; }
+.mark { font-size: 14px; font-weight: 700; }
+.palace-name { font-size: 13px; color: #9a8f7c; }
+
+.legend {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 13px;
+  color: #6b7280;
+}
+.legend .sw { font-weight: 700; padding: 0 2px; }
+
+@media (max-width: 640px) {
+  .info-grid { grid-template-columns: 1fr; }
+  .stem { font-size: 17px; }
+  .star { font-size: 16px; }
+  .door { font-size: 15px; }
+  .cell { min-height: 128px; padding: 5px; }
+}
