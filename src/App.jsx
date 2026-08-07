@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { paipan } from './qimen/engine.js';
+import { DOOR_INFO, STAR_INFO, GOD_INFO, STEM_INFO, PALACE_INFO } from './qimen/symbols.js';
 
 // ---- 简体→繁体（本盘用到的字） ----
 const S2T = {
@@ -107,7 +108,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-function PalaceCell({ data, result, shiZhu }) {
+function PalaceCell({ data, result, shiZhu, onSelect }) {
   const p = data.palace;
   // 四柱天干（甲遁旬首儀）落天盤之宮 → 標 年/月/日/時
   const pillarMarks = [0, 1, 2, 3].map((i) => result.pillarMarkPalaces[i] === p);
@@ -122,7 +123,7 @@ function PalaceCell({ data, result, shiZhu }) {
     .map((s, i) => ({ s, type: data.stemMarks?.[diStart + i]?.type }));
 
   return (
-    <div className={`cell${p === 5 ? ' center' : ''}${shiZhu ? ' shizhu-cell' : ''}`}>
+    <div className={`cell clickable${p === 5 ? ' center' : ''}${shiZhu ? ' shizhu-cell' : ''}`} onClick={onSelect} title="點擊查看本宮符號象意">
       {/* 年月日時：左上，竖排（各柱天干落天盤之宮） */}
       <div className="kong-panel">
         {PILLAR_LABELS.map((lab, i) => (pillarMarks[i] ? <span key={lab} className="kong-box on">{lab}</span> : null))}
@@ -167,6 +168,87 @@ function PalaceCell({ data, result, shiZhu }) {
   );
 }
 
+// 單個符號的象意列（八門/九星/八神/天干/宮位通用）
+function SymbolRow({ label, name, info, tagExtra }) {
+  if (!info) return null;
+  return (
+    <div className="sym-row">
+      <div className="sym-head">
+        <span className="sym-label">{label}</span>
+        <span className="sym-name">{name}</span>
+        <span className="sym-tags">
+          {info.wx && <span className="sym-tag">{t(info.wx)}</span>}
+          {info.yy && <span className="sym-tag">{info.yy}</span>}
+          {info.ji && <span className={`sym-tag ji-${info.ji === '凶' || info.ji === '大凶' ? 'xiong' : 'ji'}`}>{info.ji}</span>}
+          {tagExtra}
+        </span>
+      </div>
+      <div className="sym-meaning">{info.meaning}</div>
+      {info.items && info.items.length > 0 && (
+        <div className="sym-items">
+          {info.items.map((it) => <span key={it} className="sym-item">{it}</span>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 宮位詳情彈窗：列出該宮所有符號的象意與代表人事物
+function PalaceModal({ p, result, shiZhuPalace, onClose }) {
+  const data = result.palaces[p];
+  if (!data) return null;
+  const diStems = [data.diGan, data.diGanExtra].filter(Boolean);
+  // 本宮標記
+  const tags = [];
+  PILLAR_LABELS.forEach((lab, i) => { if (result.pillarMarkPalaces[i] === p) tags.push(lab + '柱'); });
+  if (result.horse.palace === p) tags.push('馬星');
+  if (result.kongPalaces.includes(p)) tags.push('空亡');
+  if (shiZhuPalace === p) tags.push('事主');
+  if (data.menpo) tags.push('門迫');
+  (data.marks || []).forEach((m) => tags.push(t(m)));
+  // 組合類象：彙整本宮所有符號的代表物（供日後 AI 組合）
+  const allItems = [];
+  const pushItems = (info) => { if (info && info.items) allItems.push(...info.items); };
+  pushItems(PALACE_INFO[p]);
+  pushItems(GOD_INFO[data.god]);
+  (data.stars || []).forEach((s) => pushItems(STAR_INFO[s]));
+  pushItems(DOOR_INFO[data.door]);
+  (data.tianGan || []).forEach((s) => pushItems(STEM_INFO[s]));
+  diStems.forEach((s) => pushItems(STEM_INFO[s]));
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <span className="modal-title">{PALACE_NAME[p]}</span>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="關閉">✕</button>
+        </div>
+        <div className="modal-body">
+          {tags.length > 0 && (
+            <div className="modal-tags">
+              {tags.map((x, i) => <span key={i} className="modal-tag">{x}</span>)}
+            </div>
+          )}
+          <SymbolRow label="宮位" name={PALACE_NAME[p]} info={PALACE_INFO[p]} />
+          <SymbolRow label="八神" name={t(data.god)} info={GOD_INFO[data.god]} />
+          {(data.stars || []).map((s, i) => <SymbolRow key={'star' + i} label="九星" name={t(s)} info={STAR_INFO[s]} />)}
+          <SymbolRow label="八門" name={t(data.door)} info={DOOR_INFO[data.door]} tagExtra={data.menpo ? <span className="sym-tag ji-xiong">門迫</span> : null} />
+          {(data.tianGan || []).map((s, i) => <SymbolRow key={'tg' + i} label="天盤干" name={t(s)} info={STEM_INFO[s]} />)}
+          {diStems.map((s, i) => <SymbolRow key={'dg' + i} label="地盤干" name={t(s)} info={STEM_INFO[s]} />)}
+
+          <div className="sym-combo">
+            <div className="sym-combo-head">本宮符號組合類象（{allItems.length} 項）</div>
+            <div className="sym-items">
+              {allItems.map((it, i) => <span key={i} className="sym-item combo">{it}</span>)}
+            </div>
+            <div className="sym-combo-note">（日後可接 AI 模型，依多數屬性自動推斷本宮所代表的人事物）</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [form, setForm] = useState({ year: 2026, month: 5, day: 16, hour: 11, minute: 38, name: '', sex: '乾造' });
   const [submitted, setSubmitted] = useState({ ...form });
@@ -183,6 +265,8 @@ export default function App() {
   const [querent, setQuerent] = useState({ mode: '近程', caster: '', querent: '' });
   const shiZhuPalace = useMemo(() => computeShiZhu(result, querent), [result, querent]);
   const toggleGender = (key, val) => setQuerent((q) => ({ ...q, [key]: q[key] === val ? '' : val }));
+  // 點擊宮位查看各符號象意
+  const [selected, setSelected] = useState(null);
 
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
   const onChange = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -301,7 +385,7 @@ export default function App() {
               </div>
               <div className="grid-wrap">
                 <div className="grid">
-                  {GRID.map((p) => <PalaceCell key={p} data={result.palaces[p]} result={result} shiZhu={p === shiZhuPalace} />)}
+                  {GRID.map((p) => <PalaceCell key={p} data={result.palaces[p]} result={result} shiZhu={p === shiZhuPalace} onSelect={() => setSelected(p)} />)}
                 </div>
                 {/* 外干（隐干）：贴各宮外側方位；中五宮外干寄 waiganJiGong 宮並列 */}
                 {[4, 9, 2, 3, 7, 8, 1, 6].map((p) => (
@@ -318,9 +402,14 @@ export default function App() {
                 <span><span className="sw mk-purple">墓刑</span>＝入墓+擊刑（紫）</span>
                 <span><span className="sw horse-badge">馬</span> 馬星（落{PALACE_SHORT[result.horse.palace]}宮）</span>
                 <span>外圈干＝外干（隐干）</span>
+                <span className="legend-tip">點擊宮位可查看各符號象意</span>
               </div>
             </div>
           </div>
+
+          {selected != null && (
+            <PalaceModal p={selected} result={result} shiZhuPalace={shiZhuPalace} onClose={() => setSelected(null)} />
+          )}
         </ErrorBoundary>
       )}
     </div>
