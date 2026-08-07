@@ -222,7 +222,7 @@ export function paipan(year, month, day, hour, minute) {
     };
   }
   // 中五宫
-  palaces[5] = { palace: 5, god: null, door: '中门', stars: [], tianGan: [], diGan: dipan[5], diGanExtra: null, marks: [], isKong: false };
+  palaces[5] = { palace: 5, god: null, door: '中门', stars: [], tianGan: [], diGan: dipan[5], diGanExtra: null, stemMarks: [{ stem: dipan[5], type: null }], menpo: false, marks: [], isKong: false };
 
   return {
     solar, lunar, inputSolar,

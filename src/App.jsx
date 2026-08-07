@@ -26,6 +26,21 @@ function Stem({ text, type }) {
   return <div className={`stem ${markClass(type)}`}>{text}</div>;
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 20, color: '#dc2626', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+          页面渲染出错：{String(this.state.error && this.state.error.message || this.state.error)}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function PalaceCell({ data, result }) {
   const p = data.palace;
   // 年月日時空标记
@@ -39,11 +54,11 @@ function PalaceCell({ data, result }) {
   const isHorse = result.horse.palace === p;
 
   // 左側竖排：天盤干（可多个）在上，地盤干（+寄宫干）在下
-  const tianStems = data.tianGan.map((s, i) => ({ s, type: data.stemMarks[i]?.type }));
-  const diStart = data.tianGan.length;
+  const tianStems = (data.tianGan || []).map((s, i) => ({ s, type: data.stemMarks?.[i]?.type }));
+  const diStart = (data.tianGan || []).length;
   const diStems = [data.diGan, ...(data.diGanExtra ? [data.diGanExtra] : [])]
     .filter(Boolean)
-    .map((s, i) => ({ s, type: data.stemMarks[diStart + i]?.type }));
+    .map((s, i) => ({ s, type: data.stemMarks?.[diStart + i]?.type }));
 
   return (
     <div className={`cell${p === 5 ? ' center' : ''}`}>
@@ -139,14 +154,14 @@ export default function App() {
       </form>
 
       {result && (
-        <>
+        <ErrorBoundary>
           <div className="panel">
             <div className="panel-head">基本信息</div>
             <div className="panel-body info-grid">
               <div>
                 <InfoRow label="姓名" value={`${submitted.name || '（未填）'}（${submitted.sex}）`} />
                 <InfoRow label="公历" value={result.solarText} />
-                <InfoRow label="农历" value={`${result.lunar.toString()} ${result.lunar.getTimeInChinese()}时`} />
+                <InfoRow label="农历" value={`${result.lunar.toString()}日 ${result.pillars[3][1]}时`} />
                 <InfoRow label="上一节气" value={`${result.prevJieQi} ${result.lunar.getPrevJieQi(true).getSolar().toYmdHms()}`} />
                 <InfoRow label="下一节气" value={`${result.lunar.getNextJieQi(true).getName()} ${result.lunar.getNextJieQi(true).getSolar().toYmdHms()}`} />
                 <InfoRow label="马星" value={`马星${result.horse.zhi} 落${PALACE_SHORT[result.horse.palace]}宫`} valueClass="st-green" />
@@ -178,7 +193,7 @@ export default function App() {
               </div>
             </div>
           </div>
-        </>
+        </ErrorBoundary>
       )}
     </div>
   );
