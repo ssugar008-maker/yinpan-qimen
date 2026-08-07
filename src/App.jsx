@@ -135,9 +135,17 @@ function PalaceCell({ data, result, shiZhu }) {
 
       <div className="cell-mid">
         <div className="stems">
-          {tianStems.map((x, i) => <Stem key={'t' + i} text={x.s} type={x.type} />)}
+          {tianStems.length > 0 && (
+            <div className="stem-row">
+              {tianStems.map((x, i) => <Stem key={'t' + i} text={x.s} type={x.type} />)}
+            </div>
+          )}
           {diStems.length > 0 && tianStems.length > 0 && <div className="stem-sep" />}
-          {diStems.map((x, i) => <Stem key={'d' + i} text={x.s} type={x.type} />)}
+          {diStems.length > 0 && (
+            <div className="stem-row">
+              {diStems.map((x, i) => <Stem key={'d' + i} text={x.s} type={x.type} />)}
+            </div>
+          )}
         </div>
         <div className="center-info">
           <div className="god">{t(data.god || '')}</div>

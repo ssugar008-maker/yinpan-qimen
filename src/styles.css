@@ -305,6 +305,14 @@ body {
   line-height: 1.15;
   color: var(--black);
 }
+/* 天盤干／地盤干各自同一列（寄干與本干並排） */
+.stem-row {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+}
 .stem-sep {
   width: 16px;
   height: 1px;
