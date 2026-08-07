@@ -2,5 +2,7 @@ node_modules
 dist
 *.local
 .DS_Store
-app_shot*.png
+*_shot*.png
+live_*.png
+dev_*.png
 .vercel
