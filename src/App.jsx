@@ -52,6 +52,24 @@ function Stem({ text, type }) {
   return <div className={`stem ${stemMarkClass(type)}`}>{t(text)}</div>;
 }
 
+// 換陰陽：同五行異陰陽（癸↔壬、庚↔辛、丙↔丁、戊↔己、乙↔甲）
+const YINYANG_SWAP = { 甲: '乙', 乙: '甲', 丙: '丁', 丁: '丙', 戊: '己', 己: '戊', 庚: '辛', 辛: '庚', 壬: '癸', 癸: '壬' };
+
+// 遠程事主：開盤人看日干、問事人看月干。
+// 開盤人與問事人「不同性別」→ 月干直接落天盤之宮；「同性別」→ 月干換陰陽後落天盤之宮。
+// 近程不標事主。回傳事主宮位（或 null）。
+function computeShiZhu(result, querent) {
+  if (!result || querent.mode !== '遠程') return null;
+  if (!querent.caster || !querent.querent) return null; // 需先設定開盤人與問事人性別
+  let stem = result.pillarStems[1]; // 月干（甲遁旬首儀）
+  if (querent.caster === querent.querent) stem = YINYANG_SWAP[stem]; // 同性別 → 換陰陽
+  if (stem === '甲') return result.zhiFu.palace; // 甲為旬首，以值符所落之宮論
+  for (const p of [1, 2, 3, 4, 6, 7, 8, 9]) {
+    if ((result.palaces[p].tianGan || []).includes(stem)) return p;
+  }
+  return null;
+}
+
 // 四柱八字直式排列：年 / 月 / 日 / 時 各為一柱（上干下支），末柱為時柱空亡
 function BaZiStrip({ result }) {
   const heads = ['年', '月', '日', '時'];
@@ -89,7 +107,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-function PalaceCell({ data, result }) {
+function PalaceCell({ data, result, shiZhu }) {
   const p = data.palace;
   // 四柱天干（甲遁旬首儀）落天盤之宮 → 標 年/月/日/時
   const pillarMarks = [0, 1, 2, 3].map((i) => result.pillarMarkPalaces[i] === p);
@@ -104,13 +122,16 @@ function PalaceCell({ data, result }) {
     .map((s, i) => ({ s, type: data.stemMarks?.[diStart + i]?.type }));
 
   return (
-    <div className={`cell${p === 5 ? ' center' : ''}`}>
-      {/* 年月日時空：左上，竖排（仅点亮该柱空亡落此宫者） */}
+    <div className={`cell${p === 5 ? ' center' : ''}${shiZhu ? ' shizhu-cell' : ''}`}>
+      {/* 年月日時：左上，竖排（各柱天干落天盤之宮） */}
       <div className="kong-panel">
         {PILLAR_LABELS.map((lab, i) => (pillarMarks[i] ? <span key={lab} className="kong-box on">{lab}</span> : null))}
       </div>
-      {/* 空亡小圈：右上 */}
-      {isVoid && <div className="void-circle" title="空亡" />}
+      {/* 右上：事主標記 + 空亡小圈 */}
+      <div className="tr-panel">
+        {shiZhu && <span className="shizhu-badge">事主</span>}
+        {isVoid && <div className="void-circle" title="空亡" />}
+      </div>
 
       <div className="cell-mid">
         <div className="stems">
@@ -149,6 +170,11 @@ export default function App() {
       return null;
     }
   }, [submitted]);
+
+  // 問事設定：遠/近程 + 開盤人/問事人性別（皆可留空，開盤後隨時可補）
+  const [querent, setQuerent] = useState({ mode: '近程', caster: '', querent: '' });
+  const shiZhuPalace = useMemo(() => computeShiZhu(result, querent), [result, querent]);
+  const toggleGender = (key, val) => setQuerent((q) => ({ ...q, [key]: q[key] === val ? '' : val }));
 
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
   const onChange = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -236,9 +262,38 @@ export default function App() {
           <div className="panel">
             <div className="panel-head">陰盤奇門盤</div>
             <div className="panel-body">
+              {/* 問事設定：遠程＋開盤人/問事人性別 → 標事主（可留空，隨時補） */}
+              <div className="querent-bar">
+                <div className="q-group">
+                  <span className="q-label">遠近程</span>
+                  <div className="seg">
+                    <button type="button" className={querent.mode === '近程' ? 'on' : ''} onClick={() => setQuerent({ ...querent, mode: '近程' })}>近程</button>
+                    <button type="button" className={querent.mode === '遠程' ? 'on' : ''} onClick={() => setQuerent({ ...querent, mode: '遠程' })}>遠程</button>
+                  </div>
+                </div>
+                <div className="q-group">
+                  <span className="q-label">開盤人</span>
+                  <div className="seg">
+                    <button type="button" className={querent.caster === '男' ? 'on' : ''} onClick={() => toggleGender('caster', '男')}>男</button>
+                    <button type="button" className={querent.caster === '女' ? 'on' : ''} onClick={() => toggleGender('caster', '女')}>女</button>
+                  </div>
+                </div>
+                <div className="q-group">
+                  <span className="q-label">問事人</span>
+                  <div className="seg">
+                    <button type="button" className={querent.querent === '男' ? 'on' : ''} onClick={() => toggleGender('querent', '男')}>男</button>
+                    <button type="button" className={querent.querent === '女' ? 'on' : ''} onClick={() => toggleGender('querent', '女')}>女</button>
+                  </div>
+                </div>
+                {querent.mode === '遠程' && (
+                  <span className="q-result">
+                    {shiZhuPalace ? `事主落 ${PALACE_SHORT[shiZhuPalace]}宮` : '設定開盤人與問事人性別後顯示事主'}
+                  </span>
+                )}
+              </div>
               <div className="grid-wrap">
                 <div className="grid">
-                  {GRID.map((p) => <PalaceCell key={p} data={result.palaces[p]} result={result} />)}
+                  {GRID.map((p) => <PalaceCell key={p} data={result.palaces[p]} result={result} shiZhu={p === shiZhuPalace} />)}
                 </div>
                 {/* 外干（隐干）：贴各宮外側方位；中五宮外干寄 waiganJiGong 宮並列 */}
                 {[4, 9, 2, 3, 7, 8, 1, 6].map((p) => (
