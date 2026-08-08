@@ -13,7 +13,8 @@ export default async function handler(req, res) {
     return;
   }
   // 讀取 key：支援 AI_API_KEY／DEEPSEEK_API_KEY／Qimen 等命名
-  const apiKey = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.Qimen;
+  const apiKeyRaw = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.Qimen;
+  const apiKey = apiKeyRaw ? String(apiKeyRaw).trim() : '';
   if (!apiKey) {
     res.status(503).json({ error: '尚未設定 API key（請於 Vercel 環境變數加入 AI_API_KEY 後重新部署）' });
     return;
