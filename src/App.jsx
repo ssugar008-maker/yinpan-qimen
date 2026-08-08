@@ -73,6 +73,15 @@ function computeShiZhu(result, querent) {
   return null;
 }
 
+// AI 解讀記錄（localStorage）：以「日期時間|宮位」為 key 存檔，重開宮位可直接顯示上次結果
+const AI_LIB_KEY = 'qimen_ai_library_v1';
+function loadAiLib() {
+  try { const v = JSON.parse(localStorage.getItem(AI_LIB_KEY)); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+function persistAiLib(lib) {
+  try { localStorage.setItem(AI_LIB_KEY, JSON.stringify(lib.slice(0, 200))); } catch { /* 容量滿則略過 */ }
+}
+
 // 兩五行的生克關係：回傳 { from, to, type:'生'|'克' }；相同五行（比和）回傳 null
 function wxRelation(wxA, wxB) {
   if (!wxA || !wxB || wxA === wxB) return null;
@@ -208,7 +217,7 @@ function SymbolRow({ label, name, info, tagExtra }) {
 }
 
 // 宮位詳情彈窗：列出該宮所有符號的象意與代表人事物
-function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSetCustom, onClose }) {
+function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSetCustom, onClose, savedAi, onSaveAi }) {
   const data = result.palaces[p];
   if (!data) return null;
   const diStems = [data.diGan, data.diGanExtra].filter(Boolean);
@@ -239,7 +248,7 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
   const attrList = Object.entries(attrCount).sort((a, b) => b[1] - a[1]);
 
   // AI 組合解讀（呼叫 /api/interpret，key 在伺服器端）
-  const [ai, setAi] = useState({ loading: false, text: '', error: '' });
+  const [ai, setAi] = useState({ loading: false, text: savedAi || '', error: '' });
   const runAi = async () => {
     setAi({ loading: true, text: '', error: '' });
     try {
@@ -254,7 +263,9 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || `AI 解讀失敗（${r.status}）`);
-      setAi({ loading: false, text: data.text || '', error: '' });
+      const text = (data.text || '').trim();
+      setAi({ loading: false, text, error: '' });
+      if (text && onSaveAi) onSaveAi(text); // 存檔到記錄
     } catch (e) {
       setAi({ loading: false, text: '', error: String((e && e.message) || e) });
     }
@@ -319,12 +330,13 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
             </div>
             <div className="ai-block">
               <button type="button" className="ai-btn" onClick={runAi} disabled={ai.loading}>
-                {ai.loading ? 'AI 解讀中…' : '✨ AI 解讀：組合推斷風水物／物品'}
+                {ai.loading ? 'AI 解讀中…' : (ai.text ? '↻ 重新解讀（已存檔）' : '✨ AI 解讀：組合推斷風水物／物品')}
               </button>
               {ai.error && <div className="ai-error">{ai.error}</div>}
               {ai.text && <div className="ai-result">{ai.text}</div>}
+              {ai.text && <div className="ai-saved">✓ 已自動存入「AI 解讀記錄」，重開本宮會直接顯示</div>}
             </div>
-            <div className="sym-combo-note">（AI 依主導屬性與各符號代表物，創意組合推斷本宮所指的人事物；需在 Vercel 設定 AI_API_KEY）</div>
+            <div className="sym-combo-note">（AI 依主導屬性與各符號代表物，創意組合推斷本宮所指的人事物）</div>
           </div>
         </div>
       </div>
@@ -359,6 +371,22 @@ export default function App() {
     if (text && text.trim()) next[p] = text.trim(); else delete next[p];
     return next;
   });
+  // AI 解讀記錄（library）：localStorage 持久化，重開宮位/重整頁面都保留
+  const [aiLib, setAiLib] = useState(loadAiLib);
+  // 目前盤的識別（用日期時間）；同一盤同一宮的解讀會覆蓋更新
+  const chartKey = submitted ? `${submitted.year}-${submitted.month}-${submitted.day} ${String(submitted.hour).padStart(2, '0')}:${String(submitted.minute).padStart(2, '0')}` : '';
+  const savedAiFor = (p) => { const r = aiLib.find((x) => x.key === `${chartKey}|${p}`); return r ? r.text : null; };
+  const saveAiReading = (p, text) => {
+    const key = `${chartKey}|${p}`;
+    setAiLib((lib) => {
+      const next = lib.filter((x) => x.key !== key);
+      next.unshift({ key, datetime: chartKey, palace: p, palaceName: PALACE_NAME[p], text, ts: Date.now() });
+      persistAiLib(next);
+      return next;
+    });
+  };
+  const deleteAiReading = (key) => setAiLib((lib) => { const next = lib.filter((x) => x.key !== key); persistAiLib(next); return next; });
+  const clearAiLib = () => { persistAiLib([]); setAiLib([]); };
   // 五行生克外圈顯示開關
   const [showWuxing, setShowWuxing] = useState(false);
 
@@ -700,6 +728,30 @@ export default function App() {
             </div>
           </div>
 
+          <details className="panel collapsible ai-hist-panel">
+            <summary className="panel-head">AI 解讀記錄{aiLib.length ? `（${aiLib.length}）` : ''}</summary>
+            <div className="panel-body">
+              {aiLib.length === 0 && (
+                <div className="ai-hist-empty">暫無記錄。點入宮位 → 按「AI 解讀」後會自動存檔；重開同一宮會直接顯示上次結果，重整頁面亦保留。</div>
+              )}
+              {aiLib.map((r) => (
+                <details key={r.key} className="ai-hist-item">
+                  <summary className="ai-hist-head">
+                    <span className="ai-hist-palace">{r.palaceName}</span>
+                    <span className="ai-hist-date">{r.datetime}</span>
+                  </summary>
+                  <div className="ai-hist-body">
+                    <div className="ai-hist-text">{r.text}</div>
+                    <button type="button" className="ai-hist-del" onClick={() => deleteAiReading(r.key)}>刪除此則</button>
+                  </div>
+                </details>
+              ))}
+              {aiLib.length > 0 && (
+                <button type="button" className="ai-hist-clear" onClick={clearAiLib}>清空全部記錄</button>
+              )}
+            </div>
+          </details>
+
           {selected != null && (
             <PalaceModal
               key={selected}
@@ -710,6 +762,8 @@ export default function App() {
               customLabel={customMarks[selected]}
               onSetCustom={setCustom}
               onClose={() => setSelected(null)}
+              savedAi={savedAiFor(selected)}
+              onSaveAi={(text) => saveAiReading(selected, text)}
             />
           )}
         </ErrorBoundary>
