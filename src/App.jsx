@@ -327,7 +327,7 @@ function PalaceCell({ data, result, shiZhu, shiGan, customLabel, onSelect }) {
       {/* 中宮：MO 品牌水印 */}
       {p === 5 && (
         <div className="mo-logo" aria-hidden="true">
-          <span className="mo-logo-ring">MO</span>
+          <img src="/mo-logo.png" alt="" className="mo-logo-img" />
         </div>
       )}
       {/* 年月日時：左上，竖排（各柱天干落天盤之宮） */}

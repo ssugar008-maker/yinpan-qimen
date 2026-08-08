@@ -1,11 +1,38 @@
 import React, { useMemo, useState } from 'react';
 import {
-  GRID, PALACE_DIR, PALACE_GUA, STAR_NAME, STAR_JI, PERIODS, MOUNTAINS24,
+  GRID, PALACE_DIR, PALACE_GUA, STAR_JI, PERIODS, MOUNTAINS24,
   oppositeMountain, xuanKongChart, chartTypes, castleGate, starPair, remedyText,
-  periodComparison, annualStar, annualChart, lifeGua, bazhai, GUA_NAME, EAST4,
+  annualStar, annualChart, lifeGua, bazhai, GUA_NAME, EAST4,
+  mountainFromDegree, mountainCenter, degreeOffset,
 } from './engine.js';
 
 const jiColor = (ji) => (ji === '吉' ? '#16a34a' : ji === '大凶' ? '#dc2626' : ji === '凶' ? '#d97706' : '#6b7280');
+const pairColor = (t) => (t === '吉' ? '#16a34a' : t === '大凶' ? '#dc2626' : t === '凶' || t === '半凶' ? '#d97706' : t === '半吉' ? '#65a30d' : '#6b7280');
+
+// 可重用九宮玄空盤
+function XkGrid({ chart, flow = null, compact = false }) {
+  return (
+    <div className={`xk-grid${compact ? ' compact' : ''}`}>
+      {GRID.map((p) => {
+        const isSit = p === chart.sitPalace, isFace = p === chart.facePalace;
+        const combo = starPair(chart.sG[p], chart.fG[p]);
+        return (
+          <div key={p} className={`xk-cell${p === 5 ? ' center' : ''}${isSit ? ' sit' : ''}${isFace ? ' face' : ''}`}>
+            <div className="xk-stars">
+              <span className="xk-s" style={{ color: jiColor(STAR_JI[chart.sG[p]]) }}>{chart.sG[p]}</span>
+              <span className="xk-f" style={{ color: jiColor(STAR_JI[chart.fG[p]]) }}>{chart.fG[p]}</span>
+            </div>
+            <div className="xk-pal">{PALACE_GUA[p]}{p === 5 ? '' : `·${PALACE_DIR[p]}`}</div>
+            <div className="xk-base">運{chart.pG[p]}{flow ? `　流${flow[p]}` : ''}</div>
+            {isSit && <span className="xk-tag sit-tag">坐</span>}
+            {isFace && <span className="xk-tag face-tag">向</span>}
+            {(combo.t === '凶' || combo.t === '大凶' || combo.t === '半凶') && <span className="xk-combo-dot" style={{ background: pairColor(combo.t) }} title={combo.n} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // 玄空飛星盤（下卦）
 export default function XuanKong() {
@@ -13,7 +40,10 @@ export default function XuanKong() {
   const [sitM, setSitM] = useState('子');
   const [period, setPeriod] = useState(9);
   const [flowYear, setFlowYear] = useState(now.getFullYear());
-  const [showCompare, setShowCompare] = useState(false);
+  const [degree, setDegree] = useState('0');
+  const [degMode, setDegMode] = useState('向'); // 度數為 坐山 或 向首
+  const [perA, setPerA] = useState(8);
+  const [perB, setPerB] = useState(9);
   const [birthYear, setBirthYear] = useState(1990);
   const [gender, setGender] = useState('男');
 
@@ -23,11 +53,37 @@ export default function XuanKong() {
   const castle = useMemo(() => castleGate(chart), [chart]);
   const flow = useMemo(() => annualChart(flowYear), [flowYear]);
   const flowStar = annualStar(flowYear);
-  const compare = useMemo(() => periodComparison(sitM, faceM), [sitM, faceM]);
+  const chartA = useMemo(() => xuanKongChart(perA, sitM, faceM), [perA, sitM, faceM]);
+  const chartB = useMemo(() => xuanKongChart(perB, sitM, faceM), [perB, sitM, faceM]);
+  const typesA = useMemo(() => chartTypes(chartA), [chartA]);
+  const typesB = useMemo(() => chartTypes(chartB), [chartB]);
   const gua = useMemo(() => lifeGua(+birthYear, gender), [birthYear, gender]);
   const bz = useMemo(() => bazhai(gua), [gua]);
 
   const years = []; for (let y = 1900; y <= 2099; y++) years.push(y);
+
+  // 度數輸入 → 自動定山向
+  const applyDegree = (val, mode = degMode) => {
+    setDegree(val);
+    const d = parseFloat(val);
+    if (isNaN(d)) return;
+    const m = mountainFromDegree(d);
+    setSitM(mode === '坐' ? m : oppositeMountain(m));
+  };
+  const onSitChange = (m) => {
+    setSitM(m);
+    setDegree(String(degMode === '坐' ? mountainCenter(m) : mountainCenter(oppositeMountain(m))));
+  };
+  const onModeChange = (mode) => {
+    setDegMode(mode);
+    setDegree(String(mode === '坐' ? mountainCenter(sitM) : mountainCenter(faceM)));
+  };
+  const degNum = parseFloat(degree);
+  const jianXiang = !isNaN(degNum) && Math.abs(degreeOffset(degNum)) >= 4.5;
+
+  // 星曜組合（九宮格用）
+  const combos = GRID.map((p) => ({ p, combo: starPair(chart.sG[p], chart.fG[p]) }));
+  const badCombos = combos.filter((c) => c.combo.r);
 
   return (
     <div className="xk">
@@ -36,8 +92,17 @@ export default function XuanKong() {
         <div className="panel-head">玄空飛星排盤（下卦）</div>
         <div className="panel-body">
           <div className="xk-form">
+            <label>羅盤度數
+              <input type="number" step="0.1" min="0" max="360" value={degree} onChange={(e) => applyDegree(e.target.value)} />
+            </label>
+            <label>度數為
+              <select value={degMode} onChange={(e) => onModeChange(e.target.value)}>
+                <option value="向">向首</option>
+                <option value="坐">坐山</option>
+              </select>
+            </label>
             <label>坐山
-              <select value={sitM} onChange={(e) => setSitM(e.target.value)}>
+              <select value={sitM} onChange={(e) => onSitChange(e.target.value)}>
                 {MOUNTAINS24.map((m) => <option key={m.n} value={m.n}>{m.n}山（{PALACE_GUA[m.palace]}·{PALACE_DIR[m.palace]}）</option>)}
               </select>
             </label>
@@ -55,31 +120,15 @@ export default function XuanKong() {
               </select>
             </label>
           </div>
-          <div className="xk-sub">{period}運 {sitM}山{faceM}向　｜　{flowYear}年流年 {flowStar}入中</div>
-
-          {/* 九宮飛星盤 */}
-          <div className="xk-grid">
-            {GRID.map((p) => {
-              const isSit = p === chart.sitPalace, isFace = p === chart.facePalace;
-              const combo = starPair(chart.sG[p], chart.fG[p]);
-              return (
-                <div key={p} className={`xk-cell${p === 5 ? ' center' : ''}${isSit ? ' sit' : ''}${isFace ? ' face' : ''}`}>
-                  <div className="xk-stars">
-                    <span className="xk-s" style={{ color: jiColor(STAR_JI[chart.sG[p]]) }}>{chart.sG[p]}</span>
-                    <span className="xk-f" style={{ color: jiColor(STAR_JI[chart.fG[p]]) }}>{chart.fG[p]}</span>
-                  </div>
-                  <div className="xk-pal">{PALACE_GUA[p]}{p === 5 ? '' : `·${PALACE_DIR[p]}`}</div>
-                  <div className="xk-base">運{chart.pG[p]}　流{flow[p]}</div>
-                  {isSit && <span className="xk-tag sit-tag">坐</span>}
-                  {isFace && <span className="xk-tag face-tag">向</span>}
-                  {combo.t !== '平' && combo.t !== '半吉' && <span className="xk-combo-dot" style={{ background: jiColor(combo.t) === '#16a34a' ? '#16a34a' : jiColor(combo.t) }} title={combo.n} />}
-                </div>
-              );
-            })}
+          <div className="xk-sub">
+            {period}運　坐{sitM}山（{mountainCenter(sitM)}°）　向{faceM}（{mountainCenter(faceM)}°）　｜　{flowYear}年流年 {flowStar}入中
           </div>
+          {jianXiang && <div className="xk-jx">⚠ 度數 {degree}° 接近兩山交界（兼向），下卦排盤或需改用替卦起星。</div>}
+
+          <XkGrid chart={chart} flow={flow} />
           <div className="xk-legend">
             <span><b style={{ color: '#8b5a2b' }}>左</b>山星　<b style={{ color: '#8b5a2b' }}>右</b>向星　下：運星/流年星</span>
-            <span>綠=吉　橙=凶　紅=大凶</span>
+            <span>綠=吉　橙=凶　紅=大凶　右下點=凶組合</span>
           </div>
 
           {/* 格局 */}
@@ -107,62 +156,71 @@ export default function XuanKong() {
         </div>
       </div>
 
-      {/* 星曜組合 */}
+      {/* 星曜組合：九宮格排盤 */}
       <div className="panel">
         <div className="panel-head">星曜組合（山星＋向星）＋流年</div>
         <div className="panel-body">
-          <div className="xk-combos">
-            {GRID.map((p) => {
-              const combo = starPair(chart.sG[p], chart.fG[p]);
-              const mark = p === chart.sitPalace ? '（坐）' : p === chart.facePalace ? '（向）' : '';
-              return (
-                <div key={p} className="xk-combo-row">
-                  <div className="xk-combo-head">
-                    <span className="xk-combo-pal">{PALACE_GUA[p]}宮{mark}</span>
-                    <span className="xk-combo-stars">山{chart.sG[p]} 向{chart.fG[p]} 運{chart.pG[p]} 流{flow[p]}</span>
-                    <span className="xk-combo-n" style={{ color: jiColor(combo.t) }}>{combo.n}·{combo.t}</span>
-                  </div>
-                  <div className="xk-combo-d">{combo.d}{combo.r ? `　化解：${remedyText(combo.r)}` : ''}</div>
+          <div className="xk-grid combo-grid">
+            {combos.map(({ p, combo }) => (
+              <div key={p} className={`xk-cell combo-cell${p === 5 ? ' center' : ''}`}>
+                <div className="xk-pal top">{PALACE_GUA[p]}{p === 5 ? '' : `·${PALACE_DIR[p]}`}{p === chart.sitPalace ? '（坐）' : p === chart.facePalace ? '（向）' : ''}</div>
+                <div className="xk-combo-stars2">山{chart.sG[p]} 向{chart.fG[p]} 流{flow[p]}</div>
+                <div className="xk-combo-name" style={{ color: pairColor(combo.t) }}>{combo.n}</div>
+                <div className="xk-combo-t" style={{ color: pairColor(combo.t) }}>{combo.t}</div>
+              </div>
+            ))}
+          </div>
+          {badCombos.length > 0 && (
+            <div className="xk-curelist">
+              <div className="xk-sec-head">需化解之宮位</div>
+              {badCombos.map(({ p, combo }) => (
+                <div key={p} className="xk-cure-row">
+                  <b>{PALACE_GUA[p]}宮（{PALACE_DIR[p]}）</b>　<span style={{ color: pairColor(combo.t) }}>{combo.n}</span>　— {combo.d}　<span className="xk-cure">化解：{remedyText(combo.r)}</span>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 換運對比 */}
+      {/* 換運對比：前後兩盤 + 分析 */}
       <div className="panel">
-        <div className="panel-head xk-toggle" onClick={() => setShowCompare(!showCompare)}>
-          換運對比（{sitM}山{faceM}向 一至九運）<span className="xk-caret">{showCompare ? '▾' : '▸'}</span>
-        </div>
-        {showCompare && (
-          <div className="panel-body">
-            <table className="xk-table">
-              <thead><tr><th>運</th><th>年份</th><th>山星到坐</th><th>向星到向</th><th>格局</th></tr></thead>
-              <tbody>
-                {compare.map((r) => {
-                  const cur = r.period === period;
-                  const wang = r.main && r.main.n === '旺山旺向';
-                  return (
-                    <tr key={r.period} className={cur ? 'cur' : ''}>
-                      <td>{r.period}運{cur ? '（今）' : ''}</td>
-                      <td>{r.years[0]}-{r.years[1]}</td>
-                      <td>{r.chart.sG[r.chart.sitPalace]}</td>
-                      <td>{r.chart.fG[r.chart.facePalace]}</td>
-                      <td style={{ color: wang ? '#c0392b' : (r.main ? r.main.c : '#999'), fontWeight: wang || cur ? 700 : 400 }}>
-                        {r.all.length ? r.all.map((t) => t.n).join('、') : '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <div className="xk-note">同一坐向，換運後山向星位置改變，格局吉凶亦隨之改變；可對比哪一運最旺（旺山旺向最佳）。</div>
+        <div className="panel-head">換運對比（{sitM}山{faceM}向）</div>
+        <div className="panel-body">
+          <div className="xk-form">
+            <label>換前（運）
+              <select value={perA} onChange={(e) => setPerA(+e.target.value)}>
+                {PERIODS.map((r, i) => <option key={i + 1} value={i + 1}>{i + 1}運（{r[0]}-{r[1]}）</option>)}
+              </select>
+            </label>
+            <label>換後（運）
+              <select value={perB} onChange={(e) => setPerB(+e.target.value)}>
+                {PERIODS.map((r, i) => <option key={i + 1} value={i + 1}>{i + 1}運（{r[0]}-{r[1]}）</option>)}
+              </select>
+            </label>
           </div>
-        )}
+          <div className="xk-compare">
+            <div className="xk-compare-col">
+              <div className="xk-compare-title">{perA}運（換前）</div>
+              <XkGrid chart={chartA} compact />
+              <div className="xk-compare-types">
+                {typesA.length ? typesA.map((t, i) => <span key={i} className="xk-mini-type" style={{ color: t.c }}>{t.n}</span>) : <span className="xk-none">無特殊格局</span>}
+              </div>
+            </div>
+            <div className="xk-compare-arrow">→</div>
+            <div className="xk-compare-col">
+              <div className="xk-compare-title">{perB}運（換後）</div>
+              <XkGrid chart={chartB} compact />
+              <div className="xk-compare-types">
+                {typesB.length ? typesB.map((t, i) => <span key={i} className="xk-mini-type" style={{ color: t.c }}>{t.n}</span>) : <span className="xk-none">無特殊格局</span>}
+              </div>
+            </div>
+          </div>
+          <CompareAnalysis chartA={chartA} chartB={chartB} typesA={typesA} typesB={typesB} perA={perA} perB={perB} />
+        </div>
       </div>
 
-      {/* 八宅命卦 */}
+      {/* 八宅命卦：九宮格 */}
       <div className="panel">
         <div className="panel-head">八宅命卦</div>
         <div className="panel-body">
@@ -179,29 +237,47 @@ export default function XuanKong() {
               </select>
             </label>
           </div>
-          <div className="xk-gua-result">
-            <span className="xk-gua-name">{GUA_NAME[gua]}命</span>
-            <span className={`xk-gua-grp ${EAST4.includes(gua) ? 'east' : 'west'}`}>{EAST4.includes(gua) ? '東四命' : '西四命'}</span>
-            <span className="xk-gua-tip">{EAST4.includes(gua) ? '宜：北、東、東南、南' : '宜：西北、西、西南、東北'}</span>
+          <div className="xk-grid bazhai-grid">
+            {GRID.map((p) => {
+              if (p === 5) {
+                return (
+                  <div key={p} className="xk-cell center bazhai-center">
+                    <div className="xk-gua-name">{GUA_NAME[gua]}命</div>
+                    <div className={`xk-gua-grp ${EAST4.includes(gua) ? 'east' : 'west'}`}>{EAST4.includes(gua) ? '東四命' : '西四命'}</div>
+                  </div>
+                );
+              }
+              const cell = bz[p];
+              const good = cell.ji === '吉';
+              return (
+                <div key={p} className={`xk-cell bazhai-cell ${good ? 'good' : 'bad'}`}>
+                  <div className="xk-pal top">{PALACE_GUA[p]}·{PALACE_DIR[p]}</div>
+                  <div className="xk-bz-star" style={{ color: good ? '#16a34a' : '#dc2626' }}>{cell.star}</div>
+                  <div className="xk-bz-eff">{ { 生氣: '財運事業', 天醫: '健康貴人', 延年: '感情和人', 伏位: '平穩安定', 絕命: '大凶忌臥', 五鬼: '是非意外', 六煞: '桃花口舌', 禍害: '小病破財' }[cell.star] }</div>
+                </div>
+              );
+            })}
           </div>
-          <div className="xk-bz">
-            <div className="xk-bz-col good">
-              <div className="xk-bz-head">四吉方</div>
-              {['生氣', '天醫', '延年', '伏位'].map((s) => {
-                const p = Object.keys(bz).find((k) => bz[k].star === s);
-                return <div key={s} className="xk-bz-row"><b>{s}</b>　{PALACE_GUA[p]}（{PALACE_DIR[p]}）<span className="xk-bz-d">{ { 生氣: '財運事業', 天醫: '健康貴人', 延年: '感情和人', 伏位: '平穩安定' }[s] }</span></div>;
-              })}
-            </div>
-            <div className="xk-bz-col bad">
-              <div className="xk-bz-head">四凶方</div>
-              {['絕命', '五鬼', '六煞', '禍害'].map((s) => {
-                const p = Object.keys(bz).find((k) => bz[k].star === s);
-                return <div key={s} className="xk-bz-row"><b>{s}</b>　{PALACE_GUA[p]}（{PALACE_DIR[p]}）<span className="xk-bz-d">{ { 絕命: '大凶忌臥', 五鬼: '是非意外', 六煞: '桃花口舌', 禍害: '小病破財' }[s] }</span></div>;
-              })}
-            </div>
-          </div>
+          <div className="xk-note">四吉方（生氣、天醫、延年、伏位）宜作大門、臥室、書房；四凶方（絕命、五鬼、六煞、禍害）宜作廚廁、儲物，忌臥室大門。</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// 換運分析
+function CompareAnalysis({ chartA, chartB, typesA, typesB, perA, perB }) {
+  const score = (types) => types.reduce((s, t) => s + (t.t === '大吉' ? 3 : t.t === '旺財' || t.t === '旺丁' ? 2 : t.t === '大凶' ? -3 : t.t === '凶' ? -1 : 0), 0);
+  const sa = score(typesA), sb = score(typesB);
+  const verdict = sb > sa ? `換入${perB}運後格局轉佳，較${perA}運為旺。` : sb < sa ? `換入${perB}運後格局轉弱，不及${perA}運，宜及早佈局化解。` : `換運前後格局相若。`;
+  const atSit = (c, per) => c.sG[c.sitPalace];
+  const atFace = (c, per) => c.fG[c.facePalace];
+  return (
+    <div className="xk-analysis">
+      <div className="xk-sec-head">換運分析</div>
+      <div className="xk-ana-row">坐方山星：{perA}運 {atSit(chartA)} → {perB}運 {atSit(chartB)}　｜　向方向星：{perA}運 {atFace(chartA)} → {perB}運 {atFace(chartB)}</div>
+      <div className="xk-ana-row">當運星 {perA}→{perB}：{perB}運當令星為 {perB}，{perB}運中山星{perB}在{PALACE_GUA[Object.keys(chartB.sG).find((k) => chartB.sG[k] === perB)] || '—'}宮、向星{perB}在{PALACE_GUA[Object.keys(chartB.fG).find((k) => chartB.fG[k] === perB)] || '—'}宮。</div>
+      <div className="xk-ana-row verdict">{verdict}</div>
     </div>
   );
 }

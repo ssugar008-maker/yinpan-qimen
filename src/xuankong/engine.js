@@ -32,6 +32,15 @@ const MOUNTAIN = Object.fromEntries(MOUNTAINS24.map((m) => [m.n, m]));
 // 坐山的對向（向首）：同宮相隔12位（+12 mod 24）
 export const oppositeMountain = (n) => { const i = MOUNTAINS24.findIndex((m) => m.n === n); return MOUNTAINS24[(i + 12) % 24].n; };
 
+// 24山度數：每山15度，子山=0度起（順時針）
+export const DEGREE_MOUNTAINS = ['子', '癸', '丑', '艮', '寅', '甲', '卯', '乙', '辰', '巽', '巳', '丙', '午', '丁', '未', '坤', '申', '庚', '酉', '辛', '戌', '乾', '亥', '壬'];
+// 度數 → 山名（取所在15度山）
+export const mountainFromDegree = (deg) => { const d = ((deg % 360) + 360) % 360; return DEGREE_MOUNTAINS[Math.round(d / 15) % 24]; };
+// 山名 → 中心度數
+export const mountainCenter = (name) => DEGREE_MOUNTAINS.indexOf(name) * 15;
+// 度數距所屬山中心的角度（用於兼向判斷）；|偏移|>=4.5度屬兼向範圍
+export const degreeOffset = (deg) => { const d = ((deg % 360) + 360) % 360; const c = mountainCenter(mountainFromDegree(d)); let off = d - c; if (off > 180) off -= 360; if (off < -180) off += 360; return off; };
+
 // 飛星：centerStar 入中，順(true)/逆(false) 飛 → { 宮: 星 }
 export function fly(centerStar, forward) {
   const map = {};
