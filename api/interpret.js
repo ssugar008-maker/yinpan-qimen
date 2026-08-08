@@ -4,8 +4,8 @@
 //
 // 需在 Vercel 專案設定環境變數：
 //   AI_API_KEY   必填（OpenAI／DeepSeek／Moonshot 等 OpenAI 相容介面的 key）
-//   AI_API_BASE  選填，預設 https://api.openai.com/v1
-//   AI_MODEL     選填，預設 gpt-4o-mini（DeepSeek 可填 deepseek-chat）
+//   AI_API_BASE  選填，預設 https://api.openai.com/v1（DeepSeek 填 https://api.deepseek.com）
+//   AI_MODEL     選填，預設 gpt-4o-mini（DeepSeek 填 deepseek-v4-flash；舊 deepseek-chat 已於 2026-07 停用）
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
