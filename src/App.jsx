@@ -238,6 +238,28 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
   symbols.forEach((sym) => (sym.info.attrs || []).forEach((a) => { attrCount[a] = (attrCount[a] || 0) + 1; }));
   const attrList = Object.entries(attrCount).sort((a, b) => b[1] - a[1]);
 
+  // AI 組合解讀（呼叫 /api/interpret，key 在伺服器端）
+  const [ai, setAi] = useState({ loading: false, text: '', error: '' });
+  const runAi = async () => {
+    setAi({ loading: true, text: '', error: '' });
+    try {
+      const payload = {
+        palace: PALACE_NAME[p],
+        symbols: symbols.map((s) => ({ label: s.label, name: s.name, meaning: s.info.meaning, attrs: s.info.attrs, items: s.info.items })),
+      };
+      const r = await fetch('/api/interpret', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `AI 解讀失敗（${r.status}）`);
+      setAi({ loading: false, text: data.text || '', error: '' });
+    } catch (e) {
+      setAi({ loading: false, text: '', error: String((e && e.message) || e) });
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -295,7 +317,14 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
                 </div>
               ))}
             </div>
-            <div className="sym-combo-note">（日後可接 AI 模型，依主導屬性與各符號代表物，自動組合推斷本宮所指的人事物）</div>
+            <div className="ai-block">
+              <button type="button" className="ai-btn" onClick={runAi} disabled={ai.loading}>
+                {ai.loading ? 'AI 解讀中…' : '✨ AI 解讀：組合推斷風水物／物品'}
+              </button>
+              {ai.error && <div className="ai-error">{ai.error}</div>}
+              {ai.text && <div className="ai-result">{ai.text}</div>}
+            </div>
+            <div className="sym-combo-note">（AI 依主導屬性與各符號代表物，創意組合推斷本宮所指的人事物；需在 Vercel 設定 AI_API_KEY）</div>
           </div>
         </div>
       </div>
@@ -368,72 +397,92 @@ export default function App() {
     return [...set];
   }, [shiZhuPalace, shiGanPalace, customMarks]);
 
-  // 各關鍵宮位在格外圈的錨點 + 兩兩之間的生克箭頭（弧形繞外圈，不進九宮格內）
+  // 五行生克：各關鍵宮位在格外圈的五行點 + 兩兩之間的生克箭頭。
+  // 箭頭走「直角周邊路線」：由宮位外緣 → 垂直出外環 → 沿外環（橫/直線）繞行 → 垂直進入目標宮，全程在九宮格外。
   const wxData = useMemo(() => {
-    const empty = { anchors: {}, arrows: [] };
+    const empty = { dots: [], arrows: [] };
     if (!showWuxing || !measure.grid) return empty;
     const g = measure.grid;
-    const anchorFor = (p) => {
+    const R = 26;   // 外環與格線距離
+    const AO = 14;  // 五行點與格線距離
+    const DR = 13;  // 箭頭停在五行點邊緣
+    const ring = { l: g.l - R, r: g.r + R, t: g.t - R, b: g.b + R };
+
+    // 各宮在格外圈的落點：上排4/9/2→上、下排8/1/6→下、3→左、7→右
+    const loc = (p) => {
       const c = measure.centers[p];
       if (!c) return null;
-      let dx = c.x - g.cx, dy = c.y - g.cy;
-      const len = Math.hypot(dx, dy) || 1;
-      dx /= len; dy /= len;
-      const m = 12; // 外推至格外圈
-      const l = g.l - m, r = g.r + m, tp = g.t - m, bt = g.b + m;
-      let tt = Infinity;
-      if (dx > 1e-6) tt = Math.min(tt, (r - g.cx) / dx);
-      if (dx < -1e-6) tt = Math.min(tt, (l - g.cx) / dx);
-      if (dy > 1e-6) tt = Math.min(tt, (bt - g.cy) / dy);
-      if (dy < -1e-6) tt = Math.min(tt, (tp - g.cy) / dy);
-      if (!isFinite(tt)) tt = 0;
-      return { x: g.cx + dx * tt, y: g.cy + dy * tt };
+      if (p === 4 || p === 9 || p === 2) return { ax: c.x, ay: g.t - AO, rx: c.x, ry: ring.t, edge: 'top', ix: 0, iy: 1 };
+      if (p === 8 || p === 1 || p === 6) return { ax: c.x, ay: g.b + AO, rx: c.x, ry: ring.b, edge: 'bottom', ix: 0, iy: -1 };
+      if (p === 3) return { ax: g.l - AO, ay: c.y, rx: ring.l, ry: c.y, edge: 'left', ix: 1, iy: 0 };
+      if (p === 7) return { ax: g.r + AO, ay: c.y, rx: ring.r, ry: c.y, edge: 'right', ix: -1, iy: 0 };
+      return null;
     };
-    const anchors = {};
-    keyPalaces.forEach((p) => { const a = anchorFor(p); if (a) anchors[p] = a; });
+
+    const W = ring.r - ring.l, H = ring.b - ring.t, total = 2 * (W + H);
+    const corners = [{ x: ring.l, y: ring.t }, { x: ring.r, y: ring.t }, { x: ring.r, y: ring.b }, { x: ring.l, y: ring.b }];
+    const sCorner = [0, W, W + H, 2 * W + H];
+    const sOf = (L) => (L.edge === 'top' ? L.rx - ring.l
+      : L.edge === 'right' ? W + (L.ry - ring.t)
+      : L.edge === 'bottom' ? W + H + (ring.r - L.rx)
+      : W + H + W + (ring.b - L.ry));
+
+    const dots = [];
+    keyPalaces.forEach((p) => {
+      const L = loc(p);
+      if (L) dots.push({ p, x: L.ax, y: L.ay, wx: PALACE_INFO[p].wx });
+    });
+
     const arrows = [];
+    const eps = 1e-6;
     for (let i = 0; i < keyPalaces.length; i++) {
       for (let j = i + 1; j < keyPalaces.length; j++) {
         const A = keyPalaces[i], B = keyPalaces[j];
-        const a = anchors[A], b = anchors[B];
-        if (!a || !b) continue;
+        const LA = loc(A), LB = loc(B);
+        if (!LA || !LB) continue;
         const rel = wxRelation(PALACE_INFO[A].wx, PALACE_INFO[B].wx);
         if (!rel) continue; // 比和不畫
-        const from = rel.swap ? b : a;
-        const to = rel.swap ? a : b;
+        const from = rel.swap ? LB : LA;   // 生/克 的作用方
+        const to = rel.swap ? LA : LB;     // 被作用方
         const fromWx = rel.swap ? PALACE_INFO[B].wx : PALACE_INFO[A].wx;
         const toWx = rel.swap ? PALACE_INFO[A].wx : PALACE_INFO[B].wx;
-        // 控制點：推到格線外的 padding 環（弧線繞外圈，不進九宮格、不超出 wrap）
-        const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
-        const ox = mid.x - g.cx, oy = mid.y - g.cy;
-        const olen = Math.hypot(ox, oy);
-        const ring = 22; // 推出格線外的距離
-        let ctrl;
-        if (olen > 1) { // 相鄰/斜對：沿「遠離盤心」方向推出格線外
-          const ux = ox / olen, uy = oy / olen;
-          let tEdge = Infinity;
-          if (ux > 1e-6) tEdge = Math.min(tEdge, (g.r - mid.x) / ux);
-          if (ux < -1e-6) tEdge = Math.min(tEdge, (g.l - mid.x) / ux);
-          if (uy > 1e-6) tEdge = Math.min(tEdge, (g.b - mid.y) / uy);
-          if (uy < -1e-6) tEdge = Math.min(tEdge, (g.t - mid.y) / uy);
-          if (!isFinite(tEdge) || tEdge < 0) tEdge = 0;
-          ctrl = { x: mid.x + ux * (tEdge + ring), y: mid.y + uy * (tEdge + ring) };
-        } else { // 對宮（中點≈盤心）：繞側邊格外
-          const px = -(to.y - from.y), py = (to.x - from.x);
-          const plen = Math.hypot(px, py) || 1;
-          const ux = px / plen, uy = py / plen;
-          const tEdge = (Math.abs(ux) > Math.abs(uy) ? (g.cx - g.l) : (g.cy - g.t)) + ring;
-          ctrl = { x: mid.x + ux * tEdge, y: mid.y + uy * tEdge };
+
+        // 外環途經角點：取較短方向，平手取逆時針（坎→離會繞右側，經乾、坤）
+        const sA = sOf(from), sB = sOf(to);
+        const cw = (sB - sA + total) % total;
+        const dir = cw < total - cw ? 'cw' : 'ccw';
+        const dist = dir === 'cw' ? cw : total - cw;
+        const via = [];
+        for (let k = 0; k < 4; k++) {
+          const dc = dir === 'cw' ? (sCorner[k] - sA + total) % total : (sA - sCorner[k] + total) % total;
+          if (dc > eps && dc < dist - eps) via.push({ d: dc, pt: corners[k] });
         }
-        arrows.push({
-          from, to, ctrl, type: rel.type,
-          lx: (from.x + 2 * ctrl.x + to.x) / 4,
-          ly: (from.y + 2 * ctrl.y + to.y) / 4,
-          label: `${fromWx}${rel.type}${toWx}`,
-        });
+        via.sort((a, b) => a.d - b.d);
+
+        // 路徑：起點五行點外緣 → 出外環 → 角點 → 內進目標五行點外緣（箭頭）
+        const start = { x: from.ax - from.ix * DR, y: from.ay - from.iy * DR };
+        const end = { x: to.ax - to.ix * DR, y: to.ay - to.iy * DR };
+        const pts = [start, { x: from.rx, y: from.ry }, ...via.map((v) => v.pt), { x: to.rx, y: to.ry }, end];
+        const d = pts.map((pt, k) => (k === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`)).join(' ');
+
+        // 標籤：外環旅程的弧長中點
+        const ringPts = [{ x: from.rx, y: from.ry }, ...via.map((v) => v.pt), { x: to.rx, y: to.ry }];
+        const lens = [0];
+        for (let k = 1; k < ringPts.length; k++) lens.push(lens[k - 1] + Math.hypot(ringPts[k].x - ringPts[k - 1].x, ringPts[k].y - ringPts[k - 1].y));
+        const half = lens[lens.length - 1] / 2;
+        let lx = ringPts[0].x, ly = ringPts[0].y;
+        for (let k = 1; k < ringPts.length; k++) {
+          if (lens[k] >= half) {
+            const tt = (half - lens[k - 1]) / ((lens[k] - lens[k - 1]) || 1);
+            lx = ringPts[k - 1].x + (ringPts[k].x - ringPts[k - 1].x) * tt;
+            ly = ringPts[k - 1].y + (ringPts[k].y - ringPts[k - 1].y) * tt;
+            break;
+          }
+        }
+        arrows.push({ d, lx, ly, type: rel.type, label: `${fromWx}${rel.type}${toWx}` });
       }
     }
-    return { anchors, arrows };
+    return { dots, arrows };
   }, [showWuxing, keyPalaces, measure]);
 
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
@@ -584,21 +633,16 @@ export default function App() {
                     </defs>
                     {wxData.arrows.map((a, i) => (
                       <g key={i} className={`wx-arrow ${a.type === '生' ? 'sheng' : 'ke'}`}>
-                        <path d={`M ${a.from.x} ${a.from.y} Q ${a.ctrl.x} ${a.ctrl.y} ${a.to.x} ${a.to.y}`} fill="none" markerEnd={`url(#${a.type === '生' ? 'wxSheng' : 'wxKe'})`} />
+                        <path d={a.d} fill="none" markerEnd={`url(#${a.type === '生' ? 'wxSheng' : 'wxKe'})`} />
                         <text x={a.lx} y={a.ly} className="wx-label">{a.label}</text>
                       </g>
                     ))}
-                    {keyPalaces.map((p) => {
-                      const a = wxData.anchors[p];
-                      if (!a) return null;
-                      const wx = PALACE_INFO[p].wx;
-                      return (
-                        <g key={'wx' + p} className={`wx-dot wxx-${wx}`}>
-                          <circle cx={a.x} cy={a.y} r="11" />
-                          <text x={a.x} y={a.y}>{wx}</text>
-                        </g>
-                      );
-                    })}
+                    {wxData.dots.map((dt) => (
+                      <g key={'wx' + dt.p} className={`wx-dot wxx-${dt.wx}`}>
+                        <circle cx={dt.x} cy={dt.y} r="11" />
+                        <text x={dt.x} y={dt.y}>{dt.wx}</text>
+                      </g>
+                    ))}
                   </svg>
                 )}
               </div>
@@ -619,6 +663,7 @@ export default function App() {
 
           {selected != null && (
             <PalaceModal
+              key={selected}
               p={selected}
               result={result}
               shiZhuPalace={shiZhuPalace}
