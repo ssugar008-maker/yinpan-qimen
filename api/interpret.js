@@ -2,23 +2,25 @@
 // 前端 POST 本宮所有符號（名稱、象意、屬性、類象），此函式組 prompt 呼叫 OpenAI 相容 API。
 // API key 只存在伺服器端（Vercel 環境變數），不下行到前端。
 //
-// 需在 Vercel 專案設定環境變數：
-//   AI_API_KEY   必填（OpenAI／DeepSeek／Moonshot 等 OpenAI 相容介面的 key）
-//   AI_API_BASE  選填，預設 https://api.openai.com/v1（DeepSeek 填 https://api.deepseek.com）
-//   AI_MODEL     選填，預設 gpt-4o-mini（DeepSeek 填 deepseek-v4-flash；舊 deepseek-chat 已於 2026-07 停用）
+// 需在 Vercel 專案設定環境變數（key 可用 AI_API_KEY／DEEPSEEK_API_KEY／Qimen 任一命名）：
+//   AI_API_KEY   必填（OpenAI／DeepSeek 等 OpenAI 相容介面的 key）
+//   AI_API_BASE  選填，預設 https://api.deepseek.com（OpenAI 則填 https://api.openai.com/v1）
+//   AI_MODEL     選填，預設 deepseek-v4-flash（OpenAI 則填 gpt-4o-mini）
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method Not Allowed' });
     return;
   }
-  const apiKey = process.env.AI_API_KEY;
+  // 讀取 key：支援 AI_API_KEY／DEEPSEEK_API_KEY／Qimen 等命名
+  const apiKey = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.Qimen;
   if (!apiKey) {
-    res.status(503).json({ error: '尚未設定 AI_API_KEY（請於 Vercel 專案環境變數加入後重新部署）' });
+    res.status(503).json({ error: '尚未設定 API key（請於 Vercel 環境變數加入 AI_API_KEY 後重新部署）' });
     return;
   }
-  const base = (process.env.AI_API_BASE || 'https://api.openai.com/v1').replace(/\/$/, '');
-  const model = process.env.AI_MODEL || 'gpt-4o-mini';
+  // 預設用 DeepSeek（中文最貼、最平）；可用 AI_API_BASE／AI_MODEL 覆寫
+  const base = (process.env.AI_API_BASE || 'https://api.deepseek.com').replace(/\/$/, '');
+  const model = process.env.AI_MODEL || 'deepseek-v4-flash';
 
   let payload = req.body;
   if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
