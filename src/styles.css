@@ -287,7 +287,7 @@ body {
   pointer-events: none; /* 不擋宮位點擊 */
   z-index: 3;
 }
-.wx-arrow path { stroke-width: 2; opacity: 0.9; }
+.wx-arrow path { stroke-width: 2.6; opacity: 0.92; fill: none; }
 .wx-arrow.sheng path { stroke: #2e7d32; }
 .wx-arrow.ke path { stroke: #c62828; stroke-dasharray: 5 3; }
 .wx-label {

@@ -397,93 +397,130 @@ export default function App() {
     return [...set];
   }, [shiZhuPalace, shiGanPalace, customMarks]);
 
-  // 五行生克：各關鍵宮位在格外圈的五行點 + 兩兩之間的生克箭頭。
-  // 箭頭走「直角周邊路線」：由宮位外緣 → 垂直出外環 → 沿外環（橫/直線）繞行 → 垂直進入目標宮，全程在九宮格外。
+  // 生克配對數（用於動態加大外圈 padding，讓每條箭頭有獨立環道）
+  const wxPairCount = useMemo(() => {
+    let n = 0;
+    for (let i = 0; i < keyPalaces.length; i++)
+      for (let j = i + 1; j < keyPalaces.length; j++)
+        if (wxRelation(PALACE_INFO[keyPalaces[i]].wx, PALACE_INFO[keyPalaces[j]].wx)) n++;
+    return n;
+  }, [keyPalaces]);
+
+  // 五行生克：每宮一個五行點 + 兩兩之間的生克箭頭。
+  // 箭頭走「直角周邊路線」，且每條箭頭用「獨立同心環道」（不同半徑），同宮多線再橫向錯開，避免互相重疊。
   const wxData = useMemo(() => {
     const empty = { dots: [], arrows: [] };
     if (!showWuxing || !measure.grid) return empty;
     const g = measure.grid;
-    const R = 26;   // 外環與格線距離
-    const AO = 14;  // 五行點與格線距離
-    const DR = 13;  // 箭頭停在五行點邊緣
-    const ring = { l: g.l - R, r: g.r + R, t: g.t - R, b: g.b + R };
-
-    // 各宮在格外圈的落點：上排4/9/2→上、下排8/1/6→下、3→左、7→右
-    const loc = (p) => {
-      const c = measure.centers[p];
-      if (!c) return null;
-      if (p === 4 || p === 9 || p === 2) return { ax: c.x, ay: g.t - AO, rx: c.x, ry: ring.t, edge: 'top', ix: 0, iy: 1 };
-      if (p === 8 || p === 1 || p === 6) return { ax: c.x, ay: g.b + AO, rx: c.x, ry: ring.b, edge: 'bottom', ix: 0, iy: -1 };
-      if (p === 3) return { ax: g.l - AO, ay: c.y, rx: ring.l, ry: c.y, edge: 'left', ix: 1, iy: 0 };
-      if (p === 7) return { ax: g.r + AO, ay: c.y, rx: ring.r, ry: c.y, edge: 'right', ix: -1, iy: 0 };
-      return null;
-    };
-
-    const W = ring.r - ring.l, H = ring.b - ring.t, total = 2 * (W + H);
-    const corners = [{ x: ring.l, y: ring.t }, { x: ring.r, y: ring.t }, { x: ring.r, y: ring.b }, { x: ring.l, y: ring.b }];
-    const sCorner = [0, W, W + H, 2 * W + H];
-    const sOf = (L) => (L.edge === 'top' ? L.rx - ring.l
-      : L.edge === 'right' ? W + (L.ry - ring.t)
-      : L.edge === 'bottom' ? W + H + (ring.r - L.rx)
-      : W + H + W + (ring.b - L.ry));
-
-    const dots = [];
-    keyPalaces.forEach((p) => {
-      const L = loc(p);
-      if (L) dots.push({ p, x: L.ax, y: L.ay, wx: PALACE_INFO[p].wx });
-    });
-
-    const arrows = [];
+    const AO = 14;   // 五行點距格線
+    const DR = 14;   // 箭頭停在五行點邊緣
+    const R0 = 26;   // 最內環半徑
+    const SP = 12;   // 環道間距
+    const OFF = 12;  // 同宮多線的橫向錯開
     const eps = 1e-6;
+
+    const edgeOf = (p) => (p === 4 || p === 9 || p === 2) ? 'top' : (p === 8 || p === 1 || p === 6) ? 'bottom' : (p === 3) ? 'left' : (p === 7) ? 'right' : null;
+
+    // 建立所有生克箭頭（from=作用方，to=被作用方）
+    const raw = [];
     for (let i = 0; i < keyPalaces.length; i++) {
       for (let j = i + 1; j < keyPalaces.length; j++) {
         const A = keyPalaces[i], B = keyPalaces[j];
-        const LA = loc(A), LB = loc(B);
-        if (!LA || !LB) continue;
         const rel = wxRelation(PALACE_INFO[A].wx, PALACE_INFO[B].wx);
-        if (!rel) continue; // 比和不畫
-        const from = rel.swap ? LB : LA;   // 生/克 的作用方
-        const to = rel.swap ? LA : LB;     // 被作用方
-        const fromWx = rel.swap ? PALACE_INFO[B].wx : PALACE_INFO[A].wx;
-        const toWx = rel.swap ? PALACE_INFO[A].wx : PALACE_INFO[B].wx;
-
-        // 外環途經角點：取較短方向，平手取逆時針（坎→離會繞右側，經乾、坤）
-        const sA = sOf(from), sB = sOf(to);
-        const cw = (sB - sA + total) % total;
-        const dir = cw < total - cw ? 'cw' : 'ccw';
-        const dist = dir === 'cw' ? cw : total - cw;
-        const via = [];
-        for (let k = 0; k < 4; k++) {
-          const dc = dir === 'cw' ? (sCorner[k] - sA + total) % total : (sA - sCorner[k] + total) % total;
-          if (dc > eps && dc < dist - eps) via.push({ d: dc, pt: corners[k] });
-        }
-        via.sort((a, b) => a.d - b.d);
-
-        // 路徑：起點五行點外緣 → 出外環 → 角點 → 內進目標五行點外緣（箭頭）
-        const start = { x: from.ax - from.ix * DR, y: from.ay - from.iy * DR };
-        const end = { x: to.ax - to.ix * DR, y: to.ay - to.iy * DR };
-        const pts = [start, { x: from.rx, y: from.ry }, ...via.map((v) => v.pt), { x: to.rx, y: to.ry }, end];
-        const d = pts.map((pt, k) => (k === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`)).join(' ');
-
-        // 標籤：外環旅程的弧長中點
-        const ringPts = [{ x: from.rx, y: from.ry }, ...via.map((v) => v.pt), { x: to.rx, y: to.ry }];
-        const lens = [0];
-        for (let k = 1; k < ringPts.length; k++) lens.push(lens[k - 1] + Math.hypot(ringPts[k].x - ringPts[k - 1].x, ringPts[k].y - ringPts[k - 1].y));
-        const half = lens[lens.length - 1] / 2;
-        let lx = ringPts[0].x, ly = ringPts[0].y;
-        for (let k = 1; k < ringPts.length; k++) {
-          if (lens[k] >= half) {
-            const tt = (half - lens[k - 1]) / ((lens[k] - lens[k - 1]) || 1);
-            lx = ringPts[k - 1].x + (ringPts[k].x - ringPts[k - 1].x) * tt;
-            ly = ringPts[k - 1].y + (ringPts[k].y - ringPts[k - 1].y) * tt;
-            break;
-          }
-        }
-        arrows.push({ d, lx, ly, type: rel.type, label: `${fromWx}${rel.type}${toWx}` });
+        if (!rel) continue;
+        raw.push({
+          from: rel.swap ? B : A, to: rel.swap ? A : B,
+          fromWx: rel.swap ? PALACE_INFO[B].wx : PALACE_INFO[A].wx,
+          toWx: rel.swap ? PALACE_INFO[A].wx : PALACE_INFO[B].wx,
+          type: rel.type,
+        });
       }
     }
-    return { dots, arrows };
+    // 路徑長者排外環（用宮位中心曼哈頓距估算），每條一個獨立半徑
+    const arrows = raw.map((a) => {
+      const cf = measure.centers[a.from], ct = measure.centers[a.to];
+      const dist = (cf && ct) ? Math.abs(cf.x - ct.x) + Math.abs(cf.y - ct.y) : 0;
+      return { ...a, dist };
+    }).sort((x, y) => y.dist - x.dist).map((a, k) => ({ ...a, ring: R0 + k * SP }));
+
+    // 五行點（每宮一點，位於宮位正外緣，不錯開）
+    const dots = keyPalaces.map((p) => {
+      const c = measure.centers[p];
+      if (!c) return null;
+      const e = edgeOf(p);
+      let x, y;
+      if (e === 'top') { x = c.x; y = g.t - AO; } else if (e === 'bottom') { x = c.x; y = g.b + AO; }
+      else if (e === 'left') { x = g.l - AO; y = c.y; } else { x = g.r + AO; y = c.y; }
+      return { p, x, y, wx: PALACE_INFO[p].wx };
+    }).filter(Boolean);
+
+    // 同宮多線的錯開計數
+    const connCount = {};
+    arrows.forEach((a) => { connCount[a.from] = (connCount[a.from] || 0) + 1; connCount[a.to] = (connCount[a.to] || 0) + 1; });
+    const connSeen = {};
+    // 連接點（含錯開）：回傳該宮在此環道上的 外緣點(ax,ay) 與 環點(rx,ry)
+    const conn = (p, rr) => {
+      const c = measure.centers[p];
+      if (!c) return null;
+      const e = edgeOf(p);
+      const idx = connSeen[p] || 0;
+      const n = connCount[p] || 1;
+      const delta = (idx - (n - 1) / 2) * OFF;
+      connSeen[p] = idx + 1;
+      if (e === 'top') { const x = c.x + delta; return { ax: x, ay: g.t - AO, rx: x, ry: g.t - rr, ix: 0, iy: 1, edge: e }; }
+      if (e === 'bottom') { const x = c.x + delta; return { ax: x, ay: g.b + AO, rx: x, ry: g.b + rr, ix: 0, iy: -1, edge: e }; }
+      if (e === 'left') { const y = c.y + delta; return { ax: g.l - AO, ay: y, rx: g.l - rr, ry: y, ix: 1, iy: 0, edge: e }; }
+      const y = c.y + delta; return { ax: g.r + AO, ay: y, rx: g.r + rr, ry: y, ix: -1, iy: 0, edge: e };
+    };
+
+    const out = [];
+    arrows.forEach((a) => {
+      const rr = a.ring;
+      const ring = { l: g.l - rr, r: g.r + rr, t: g.t - rr, b: g.b + rr };
+      const W = ring.r - ring.l, H = ring.b - ring.t, total = 2 * (W + H);
+      const corners = [{ x: ring.l, y: ring.t }, { x: ring.r, y: ring.t }, { x: ring.r, y: ring.b }, { x: ring.l, y: ring.b }];
+      const sCorner = [0, W, W + H, 2 * W + H];
+      const from = conn(a.from, rr);
+      const to = conn(a.to, rr);
+      if (!from || !to) return;
+      const sOf = (L) => (L.edge === 'top' ? L.rx - ring.l : L.edge === 'right' ? W + (L.ry - ring.t) : L.edge === 'bottom' ? W + H + (ring.r - L.rx) : W + H + W + (ring.b - L.ry));
+      const sA = sOf(from), sB = sOf(to);
+      const cw = (sB - sA + total) % total;
+      const dir = cw < total - cw ? 'cw' : 'ccw';
+      const dist = dir === 'cw' ? cw : total - cw;
+      const via = [];
+      for (let m = 0; m < 4; m++) {
+        const dc = dir === 'cw' ? (sCorner[m] - sA + total) % total : (sA - sCorner[m] + total) % total;
+        if (dc > eps && dc < dist - eps) via.push({ d: dc, pt: corners[m] });
+      }
+      via.sort((x, y) => x.d - y.d);
+
+      const start = { x: from.ax - from.ix * DR, y: from.ay - from.iy * DR };
+      const end = { x: to.ax - to.ix * DR, y: to.ay - to.iy * DR };
+      const pts = [start, { x: from.rx, y: from.ry }, ...via.map((v) => v.pt), { x: to.rx, y: to.ry }, end];
+      const d = pts.map((pt, k) => (k === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`)).join(' ');
+
+      // 標籤：外環旅程的弧長中點
+      const ringPts = [{ x: from.rx, y: from.ry }, ...via.map((v) => v.pt), { x: to.rx, y: to.ry }];
+      const lens = [0];
+      for (let k = 1; k < ringPts.length; k++) lens.push(lens[k - 1] + Math.hypot(ringPts[k].x - ringPts[k - 1].x, ringPts[k].y - ringPts[k - 1].y));
+      const half = lens[lens.length - 1] / 2;
+      let lx = ringPts[0].x, ly = ringPts[0].y;
+      for (let k = 1; k < ringPts.length; k++) {
+        if (lens[k] >= half) {
+          const tt = (half - lens[k - 1]) / ((lens[k] - lens[k - 1]) || 1);
+          lx = ringPts[k - 1].x + (ringPts[k].x - ringPts[k - 1].x) * tt;
+          ly = ringPts[k - 1].y + (ringPts[k].y - ringPts[k - 1].y) * tt;
+          break;
+        }
+      }
+      out.push({ d, lx, ly, type: a.type, label: `${a.fromWx}${a.type}${a.toWx}` });
+    });
+    return { dots, arrows: out };
   }, [showWuxing, keyPalaces, measure]);
+
+  // 動態外圈 padding：環道越多，外圈越大，讓箭頭不進九宮格也不壓外干
+  const wxPadding = Math.max(46, 26 + Math.max(0, wxPairCount - 1) * 12 + 20);
 
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
   const onChange = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -603,7 +640,7 @@ export default function App() {
                   五行生克{showWuxing ? '·顯示' : '·隱藏'}
                 </button>
               </div>
-              <div className={`grid-wrap${showWuxing ? ' wx-on' : ''}`} ref={wrapRef}>
+              <div className={`grid-wrap${showWuxing ? ' wx-on' : ''}`} ref={wrapRef} style={showWuxing ? { padding: `${wxPadding}px` } : undefined}>
                 <div className="grid">
                   {GRID.map((p) => (
                     <PalaceCell
@@ -628,8 +665,8 @@ export default function App() {
                 {showWuxing && measure.grid && (
                   <svg className="wx-overlay" width={measure.w} height={measure.h} viewBox={`0 0 ${measure.w} ${measure.h}`}>
                     <defs>
-                      <marker id="wxSheng" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 Z" fill="#2e7d32" /></marker>
-                      <marker id="wxKe" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 Z" fill="#c62828" /></marker>
+                      <marker id="wxSheng" markerUnits="userSpaceOnUse" markerWidth="15" markerHeight="15" refX="11" refY="7.5" orient="auto"><path d="M1,1 L13,7.5 L1,14 Z" fill="#2e7d32" stroke="#fff" strokeWidth="1.2" /></marker>
+                      <marker id="wxKe" markerUnits="userSpaceOnUse" markerWidth="15" markerHeight="15" refX="11" refY="7.5" orient="auto"><path d="M1,1 L13,7.5 L1,14 Z" fill="#c62828" stroke="#fff" strokeWidth="1.2" /></marker>
                     </defs>
                     {wxData.arrows.map((a, i) => (
                       <g key={i} className={`wx-arrow ${a.type === '生' ? 'sheng' : 'ke'}`}>
