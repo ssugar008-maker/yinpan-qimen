@@ -734,3 +734,104 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
   .fly-cell .fly-star { font-size: 22px; }
   .fly-row-title { font-size: 13px; }
 }
+
+/* ── 玄空飛星 ── */
+.xk-form { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.xk-form label { display: flex; flex-direction: column; font-size: 13px; color: #6a5f4f; gap: 4px; flex: 1; min-width: 120px; }
+.xk-form select, .xk-form input {
+  padding: 8px 10px; font-size: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--black);
+}
+.xk-form input[readonly] { background: #f6f1e6; color: var(--accent); font-weight: 600; }
+.xk-sub { text-align: center; font-size: 14px; font-weight: 700; color: var(--accent); margin: 4px 0 12px; }
+
+.xk-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 380px; margin: 0 auto 8px; }
+.xk-cell {
+  position: relative; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+  padding: 8px 4px 6px; text-align: center; min-height: 78px;
+}
+.xk-cell.center { background: #f6f1e6; }
+.xk-cell.sit { border-color: #8b5a2b; box-shadow: inset 0 0 0 1px #8b5a2b; }
+.xk-cell.face { border-color: #2563eb; box-shadow: inset 0 0 0 1px #2563eb; }
+.xk-stars { display: flex; justify-content: space-between; padding: 0 8px; }
+.xk-stars .xk-s, .xk-stars .xk-f { font-size: 24px; font-weight: 800; line-height: 1.1; }
+.xk-pal { font-size: 11px; color: #8a8073; margin-top: 2px; }
+.xk-base { font-size: 11px; color: #a89a86; margin-top: 2px; }
+.xk-tag {
+  position: absolute; top: 2px; font-size: 10px; font-weight: 700; color: #fff;
+  padding: 1px 5px; border-radius: 4px;
+}
+.xk-cell .sit-tag { left: 2px; background: #8b5a2b; }
+.xk-cell .face-tag { right: 2px; background: #2563eb; }
+.xk-combo-dot { position: absolute; bottom: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; }
+.xk-legend { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; font-size: 11px; color: #8a8073; max-width: 380px; margin: 0 auto 12px; }
+
+.xk-types { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.xk-type { border: 1px solid; border-radius: 8px; padding: 8px 12px; background: #fff; }
+.xk-type-n { font-weight: 700; font-size: 14px; margin-right: 8px; }
+.xk-type-d { font-size: 13px; color: #4a4238; }
+
+.xk-castle { margin-top: 12px; }
+.xk-sec-head { font-weight: 700; font-size: 14px; color: var(--accent); margin-bottom: 6px; }
+.xk-none { font-size: 13px; color: #999; }
+.xk-castle-row { border-left: 4px solid; padding: 6px 10px; background: #fff; border-radius: 6px; font-size: 13px; margin-bottom: 6px; }
+
+.xk-combos { display: flex; flex-direction: column; gap: 6px; }
+.xk-combo-row { border: 1px solid #eee5d5; border-radius: 8px; padding: 8px 12px; background: #fff; }
+.xk-combo-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.xk-combo-pal { font-weight: 700; font-size: 13px; color: var(--black); }
+.xk-combo-stars { font-size: 11px; color: #a89a86; }
+.xk-combo-n { font-size: 12px; font-weight: 700; margin-left: auto; }
+.xk-combo-d { font-size: 12px; color: #4a4238; margin-top: 3px; line-height: 1.6; }
+
+.xk-toggle { cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; }
+.xk-caret { color: #9a86c0; }
+.xk-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.xk-table th, .xk-table td { padding: 7px 6px; text-align: center; border-bottom: 1px solid #eee5d5; }
+.xk-table th { background: #f3eddd; color: var(--accent); }
+.xk-table tr.cur td { background: #eaf4ea; font-weight: 700; }
+.xk-note { font-size: 12px; color: #8a8073; margin-top: 10px; line-height: 1.6; }
+
+.xk-gua-result { display: flex; align-items: center; gap: 12px; margin: 8px 0 12px; flex-wrap: wrap; }
+.xk-gua-name { font-size: 24px; font-weight: 800; color: var(--accent); }
+.xk-gua-grp { font-size: 13px; font-weight: 700; color: #fff; padding: 3px 10px; border-radius: 12px; }
+.xk-gua-grp.east { background: #2563eb; }
+.xk-gua-grp.west { background: #8b5a2b; }
+.xk-gua-tip { font-size: 12px; color: #8a8073; }
+.xk-bz { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.xk-bz-col { border-radius: 8px; padding: 10px 12px; }
+.xk-bz-col.good { background: #eaf4ea; border: 1px solid #b7d8b7; }
+.xk-bz-col.bad { background: #fdeceb; border: 1px solid #f0c6c0; }
+.xk-bz-head { font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+.xk-bz-col.good .xk-bz-head { color: var(--green); }
+.xk-bz-col.bad .xk-bz-head { color: var(--red); }
+.xk-bz-row { font-size: 13px; padding: 3px 0; color: #333; }
+.xk-bz-row b { display: inline-block; min-width: 38px; }
+.xk-bz-d { font-size: 11px; color: #8a8073; margin-left: 6px; }
+
+@media (max-width: 640px) {
+  .xk-stars .xk-s, .xk-stars .xk-f { font-size: 20px; }
+  .xk-cell { min-height: 70px; }
+  .xk-bz { grid-template-columns: 1fr; }
+  .xk-form label { min-width: 100px; }
+}
+
+/* ── 品牌 ── */
+.subtitle { text-align: center; font-size: 12px; color: #9a86c0; margin-top: -8px; margin-bottom: 10px; letter-spacing: 3px; }
+/* 中宮 MO 水印 */
+.mo-logo {
+  position: absolute; inset: 0; z-index: 0;
+  display: flex; align-items: center; justify-content: center; pointer-events: none;
+}
+.mo-logo-ring {
+  width: 56px; height: 56px; border-radius: 50%;
+  border: 2.5px solid var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 21px;
+  color: var(--accent); letter-spacing: 1px; text-indent: 1px;
+  opacity: 0.16; box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.35);
+}
+.cell.center .cell-mid, .cell.center .cell-bottom, .cell.center .kong-panel, .cell.center .tr-panel { position: relative; z-index: 1; }
+@media (max-width: 640px) {
+  .subtitle { font-size: 10px; letter-spacing: 2px; margin-top: -6px; }
+  .mo-logo-ring { width: 44px; height: 44px; font-size: 17px; border-width: 2px; }
+}

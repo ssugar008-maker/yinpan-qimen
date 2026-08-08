@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { Solar } from 'lunar-javascript';
 import { paipan } from './qimen/engine.js';
+import XuanKong from './xuankong/XuanKong.jsx';
 import { DOOR_INFO, STAR_INFO, GOD_INFO, STEM_INFO, PALACE_INFO, WUXING_SHENG, WUXING_KE } from './qimen/symbols.js';
 
 // ---- 简体→繁体（本盘用到的字） ----
@@ -323,6 +324,12 @@ function PalaceCell({ data, result, shiZhu, shiGan, customLabel, onSelect }) {
 
   return (
     <div data-palace={p} className={`cell clickable${p === 5 ? ' center' : ''}${shiZhu ? ' shizhu-cell' : ''}`} onClick={onSelect} title="點擊查看本宮符號象意">
+      {/* 中宮：MO 品牌水印 */}
+      {p === 5 && (
+        <div className="mo-logo" aria-hidden="true">
+          <span className="mo-logo-ring">MO</span>
+        </div>
+      )}
       {/* 年月日時：左上，竖排（各柱天干落天盤之宮） */}
       <div className="kong-panel">
         {PILLAR_LABELS.map((lab, i) => (pillarMarks[i] ? <span key={lab} className="kong-box on">{lab}</span> : null))}
@@ -747,16 +754,19 @@ export default function App() {
 
   return (
     <div className="page">
-      <h1 className="title">陰盤奇門排盤（時盤）</h1>
+      <h1 className="title">MO易學</h1>
+      <div className="subtitle">陰盤奇門 · 九宮飛星 · 玄空飛星</div>
 
       <div className="tabs">
         <button type="button" className={`tab${tab === 'chart' ? ' active' : ''}`} onClick={() => setTab('chart')}>陰盤奇門</button>
         <button type="button" className={`tab${tab === 'months' ? ' active' : ''}`} onClick={() => setTab('months')}>月份時間</button>
         <button type="button" className={`tab${tab === 'stars' ? ' active' : ''}`} onClick={() => setTab('stars')}>九宮飛星</button>
+        <button type="button" className={`tab${tab === 'xuankong' ? ' active' : ''}`} onClick={() => setTab('xuankong')}>玄空飛星</button>
       </div>
 
       {tab === 'months' && <MonthsPanel />}
       {tab === 'stars' && <StarsPanel />}
+      {tab === 'xuankong' && <XuanKong />}
 
       {tab === 'chart' && (<>
       <details className="panel collapsible" open={!isMobile}>
