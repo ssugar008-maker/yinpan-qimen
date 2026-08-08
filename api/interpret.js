@@ -60,7 +60,8 @@ ${lines}
           { role: 'user', content: prompt },
         ],
         temperature: 0.8,
-        max_tokens: 600,
+        max_tokens: 1400,
+        thinking: { type: 'disabled' }, // 關閉思考模式，直接輸出答案（避免 reasoning 佔盡 token 致 content 空）
       }),
     });
     if (!r.ok) {
@@ -69,8 +70,13 @@ ${lines}
       return;
     }
     const data = await r.json();
-    const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    res.status(200).json({ text: (text || '').trim() || '（AI 未回傳內容）' });
+    const msg = data && data.choices && data.choices[0] && data.choices[0].message;
+    // 部分模型把答案放在 content，思考放在 reasoning_content；優先取 content
+    const text = ((msg && msg.content) || '').trim();
+    res.status(200).json({
+      text: text || '（AI 未回傳內容）',
+      debug: { finish: data && data.choices && data.choices[0] && data.choices[0].finish_reason, hasContent: !!(msg && msg.content), hasReasoning: !!(msg && msg.reasoning_content) },
+    });
   } catch (e) {
     res.status(500).json({ error: 'AI 呼叫失敗', detail: String(e && e.message || e) });
   }
