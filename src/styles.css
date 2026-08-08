@@ -129,6 +129,10 @@ body {
 .grid-wrap {
   position: relative;
   padding: 26px 30px; /* 给外圈外干留位 */
+  transition: padding 0.2s ease;
+}
+.grid-wrap.wx-on {
+  padding: 50px; /* 顯示五行生克時加大外圈，讓箭頭走格外不進九宮格 */
 }
 .grid {
   display: grid;
@@ -242,9 +246,8 @@ body {
   border-radius: 50%;
   background: transparent;
 }
-/* 事主標記（紅底白字）＋宮位高亮 */
-.shizhu-badge {
-  background: var(--red);
+/* 角色標記徽章（事主/時干/自訂）＋宮位高亮 */
+.mk-badge {
   color: #fff;
   font-size: 11px;
   font-weight: 700;
@@ -252,11 +255,59 @@ body {
   border-radius: 4px;
   line-height: 1.3;
   white-space: nowrap;
+  max-width: 70px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.mk-shizhu { background: var(--red); }
+.mk-shigan { background: #1565c0; } /* 時干：藍 */
+.mk-custom { background: #2e7d32; } /* 自訂：綠 */
 .cell.shizhu-cell {
   border-color: var(--red);
   box-shadow: inset 0 0 0 1.5px var(--red);
 }
+
+/* ---- 五行生克外圈（SVG 覆蓋層，不擋九宮格點擊） ---- */
+.wx-toggle {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #f5f5f5;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wx-toggle.on { background: #e8f0e9; color: #2e7d32; border-color: #2e7d32; }
+.wx-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* 不擋宮位點擊 */
+  z-index: 3;
+}
+.wx-arrow path { stroke-width: 2; opacity: 0.9; }
+.wx-arrow.sheng path { stroke: #2e7d32; }
+.wx-arrow.ke path { stroke: #c62828; stroke-dasharray: 5 3; }
+.wx-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3px;
+}
+.wx-arrow.sheng .wx-label { fill: #2e7d32; }
+.wx-arrow.ke .wx-label { fill: #c62828; }
+.wx-dot circle { stroke: #fff; stroke-width: 1.5; opacity: 0.95; }
+.wx-dot text { font-size: 11px; font-weight: 700; fill: #fff; text-anchor: middle; dominant-baseline: central; }
+.wx-dot.wxx-木 circle { fill: #2e7d32; }
+.wx-dot.wxx-火 circle { fill: #c62828; }
+.wx-dot.wxx-土 circle { fill: #a06a00; }
+.wx-dot.wxx-金 circle { fill: #8a8a8a; }
+.wx-dot.wxx-水 circle { fill: #1565c0; }
 
 /* ---- 問事設定（遠/近程 + 開盤人/問事人性別） ---- */
 .querent-bar {
@@ -327,6 +378,26 @@ body {
 .sym-item.combo { background: #efe7f6; color: #6b3fa0; border-color: #ddccee; }
 .sym-combo-note { font-size: 12px; color: #9a8f7c; margin-top: 8px; line-height: 1.5; }
 .legend-tip { color: var(--accent); font-weight: 700; }
+
+/* 自訂標記輸入（宮位彈窗頂部） */
+.custom-mark { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; padding: 8px 10px; background: #f0f7f0; border: 1px solid #cfe3cf; border-radius: 8px; }
+.custom-mark-label { font-size: 12px; font-weight: 700; color: #2e7d32; white-space: nowrap; }
+.custom-mark-input { flex: 1; min-width: 0; font-size: 14px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.custom-mark-clear { font-size: 12px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--muted); cursor: pointer; white-space: nowrap; }
+
+/* 組合類象：主導屬性（多數共有） */
+.attr-block { margin: 4px 0 10px; }
+.attr-head { font-size: 12px; color: #9a8f7c; margin-bottom: 5px; }
+.attr-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.attr-chip { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #eef2f7; color: #4a5568; border: 1px solid #d7dee8; }
+.attr-chip.hot { background: #2e7d32; color: #fff; border-color: #2e7d32; font-weight: 700; }
+
+/* 組合類象：依符號分組的代表物 */
+.combo-groups { display: flex; flex-direction: column; gap: 8px; }
+.combo-group { padding: 6px 8px; background: #faf7f0; border: 1px solid #eee4d3; border-radius: 8px; }
+.combo-group-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.combo-group-label { font-size: 11px; color: #9a8f7c; }
+.combo-group-name { font-size: 14px; font-weight: 700; color: var(--accent); }
 
 .cell-mid {
   display: flex;
@@ -460,6 +531,7 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 
   /* 九宮格：compact，確保文字不換行且四柱+盤同屏 */
   .grid-wrap { padding: 20px 20px; }
+  .grid-wrap.wx-on { padding: 38px; }
   .grid { gap: 4px; }
   .cell { min-height: 106px; padding: 4px 3px; }
   .cell-mid { gap: 3px; padding: 15px 0 2px; }
@@ -480,8 +552,13 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
   .kong-box { width: 14px; height: 14px; font-size: 9px; line-height: 14px; }
   .tr-panel { top: 3px; right: 3px; gap: 2px; }
   .void-circle { width: 10px; height: 10px; border-width: 1.5px; }
-  .shizhu-badge { font-size: 9px; padding: 0 4px; }
+  .mk-badge { font-size: 9px; padding: 0 4px; max-width: 52px; }
   .legend { font-size: 11px; gap: 4px 10px; margin-top: 8px; }
+
+  /* 五行生克：compact */
+  .wx-toggle { font-size: 11px; padding: 3px 8px; }
+  .wx-label { font-size: 10px; }
+  .wx-dot text { font-size: 9px; }
 
   /* 問事設定：compact */
   .querent-bar { gap: 6px 12px; padding-bottom: 8px; }
@@ -498,4 +575,8 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
   .sym-name { font-size: 16px; }
   .sym-meaning { font-size: 13px; }
   .sym-item { font-size: 11px; }
+  .custom-mark { gap: 6px; padding: 6px 8px; }
+  .custom-mark-input { font-size: 13px; }
+  .attr-chip { font-size: 11px; }
+  .combo-group-name { font-size: 13px; }
 }

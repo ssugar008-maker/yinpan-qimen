@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { paipan } from './qimen/engine.js';
-import { DOOR_INFO, STAR_INFO, GOD_INFO, STEM_INFO, PALACE_INFO } from './qimen/symbols.js';
+import { DOOR_INFO, STAR_INFO, GOD_INFO, STEM_INFO, PALACE_INFO, WUXING_SHENG, WUXING_KE } from './qimen/symbols.js';
 
 // ---- 简体→繁体（本盘用到的字） ----
 const S2T = {
@@ -56,18 +56,30 @@ function Stem({ text, type }) {
 // 換陰陽：同五行異陰陽（癸↔壬、庚↔辛、丙↔丁、戊↔己、乙↔甲）
 const YINYANG_SWAP = { 甲: '乙', 乙: '甲', 丙: '丁', 丁: '丙', 戊: '己', 己: '戊', 庚: '辛', 辛: '庚', 壬: '癸', 癸: '壬' };
 
-// 遠程事主：開盤人看日干、問事人看月干。
-// 開盤人與問事人「不同性別」→ 月干直接落天盤之宮；「同性別」→ 月干換陰陽後落天盤之宮。
-// 近程不標事主。回傳事主宮位（或 null）。
+// 事主宮位：
+// 近程（求測人在現場）→ 直接以「日干」落天盤之宮為事主（不需性別）。
+// 遠程 → 開盤人看日干、問事人看月干；開盤人與問事人「不同性別」用月干直接落宮，
+//         「同性別」則月干換陰陽（同五行異陰陽，如癸→壬）後落宮。
 function computeShiZhu(result, querent) {
-  if (!result || querent.mode !== '遠程') return null;
-  if (!querent.caster || !querent.querent) return null; // 需先設定開盤人與問事人性別
+  if (!result) return null;
+  if (querent.mode === '近程') return result.pillarMarkPalaces[2]; // 日干（甲遁旬首儀）落天盤之宮
+  if (!querent.caster || !querent.querent) return null; // 遠程需先設定開盤人與問事人性別
   let stem = result.pillarStems[1]; // 月干（甲遁旬首儀）
   if (querent.caster === querent.querent) stem = YINYANG_SWAP[stem]; // 同性別 → 換陰陽
   if (stem === '甲') return result.zhiFu.palace; // 甲為旬首，以值符所落之宮論
   for (const p of [1, 2, 3, 4, 6, 7, 8, 9]) {
     if ((result.palaces[p].tianGan || []).includes(stem)) return p;
   }
+  return null;
+}
+
+// 兩五行的生克關係：回傳 { from, to, type:'生'|'克' }；相同五行（比和）回傳 null
+function wxRelation(wxA, wxB) {
+  if (!wxA || !wxB || wxA === wxB) return null;
+  if (WUXING_SHENG[wxA] === wxB) return { type: '生' }; // A生B
+  if (WUXING_SHENG[wxB] === wxA) return { type: '生', swap: true }; // B生A
+  if (WUXING_KE[wxA] === wxB) return { type: '克' }; // A克B
+  if (WUXING_KE[wxB] === wxA) return { type: '克', swap: true }; // B克A
   return null;
 }
 
@@ -108,7 +120,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-function PalaceCell({ data, result, shiZhu, onSelect }) {
+function PalaceCell({ data, result, shiZhu, shiGan, customLabel, onSelect }) {
   const p = data.palace;
   // 四柱天干（甲遁旬首儀）落天盤之宮 → 標 年/月/日/時
   const pillarMarks = [0, 1, 2, 3].map((i) => result.pillarMarkPalaces[i] === p);
@@ -123,14 +135,16 @@ function PalaceCell({ data, result, shiZhu, onSelect }) {
     .map((s, i) => ({ s, type: data.stemMarks?.[diStart + i]?.type }));
 
   return (
-    <div className={`cell clickable${p === 5 ? ' center' : ''}${shiZhu ? ' shizhu-cell' : ''}`} onClick={onSelect} title="點擊查看本宮符號象意">
+    <div data-palace={p} className={`cell clickable${p === 5 ? ' center' : ''}${shiZhu ? ' shizhu-cell' : ''}`} onClick={onSelect} title="點擊查看本宮符號象意">
       {/* 年月日時：左上，竖排（各柱天干落天盤之宮） */}
       <div className="kong-panel">
         {PILLAR_LABELS.map((lab, i) => (pillarMarks[i] ? <span key={lab} className="kong-box on">{lab}</span> : null))}
       </div>
-      {/* 右上：事主標記 + 空亡小圈 */}
+      {/* 右上：事主 / 時干 / 自訂標記 + 空亡小圈（直排堆疊） */}
       <div className="tr-panel">
-        {shiZhu && <span className="shizhu-badge">事主</span>}
+        {shiZhu && <span className="mk-badge mk-shizhu">事主</span>}
+        {shiGan && <span className="mk-badge mk-shigan">時干</span>}
+        {customLabel && <span className="mk-badge mk-custom">{customLabel}</span>}
         {isVoid && <div className="void-circle" title="空亡" />}
       </div>
 
@@ -194,7 +208,7 @@ function SymbolRow({ label, name, info, tagExtra }) {
 }
 
 // 宮位詳情彈窗：列出該宮所有符號的象意與代表人事物
-function PalaceModal({ p, result, shiZhuPalace, onClose }) {
+function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSetCustom, onClose }) {
   const data = result.palaces[p];
   if (!data) return null;
   const diStems = [data.diGan, data.diGanExtra].filter(Boolean);
@@ -204,17 +218,25 @@ function PalaceModal({ p, result, shiZhuPalace, onClose }) {
   if (result.horse.palace === p) tags.push('馬星');
   if (result.kongPalaces.includes(p)) tags.push('空亡');
   if (shiZhuPalace === p) tags.push('事主');
+  if (shiGanPalace === p) tags.push('時干');
+  if (customLabel) tags.push('自訂：' + customLabel);
   if (data.menpo) tags.push('門迫');
   (data.marks || []).forEach((m) => tags.push(t(m)));
-  // 組合類象：彙整本宮所有符號的代表物（供日後 AI 組合）
-  const allItems = [];
-  const pushItems = (info) => { if (info && info.items) allItems.push(...info.items); };
-  pushItems(PALACE_INFO[p]);
-  pushItems(GOD_INFO[data.god]);
-  (data.stars || []).forEach((s) => pushItems(STAR_INFO[s]));
-  pushItems(DOOR_INFO[data.door]);
-  (data.tianGan || []).forEach((s) => pushItems(STEM_INFO[s]));
-  diStems.forEach((s) => pushItems(STEM_INFO[s]));
+
+  // 本宮所有符號（含來源），供組合類象分組顯示
+  const symbols = [];
+  const addSym = (label, name, info) => { if (info) symbols.push({ label, name, info }); };
+  addSym('宮位', PALACE_NAME[p], PALACE_INFO[p]);
+  addSym('八神', t(data.god), GOD_INFO[data.god]);
+  (data.stars || []).forEach((s) => addSym('九星', t(s), STAR_INFO[s]));
+  addSym('八門', t(data.door), DOOR_INFO[data.door]);
+  (data.tianGan || []).forEach((s) => addSym('天盤干', t(s), STEM_INFO[s]));
+  diStems.forEach((s) => addSym('地盤干', t(s), STEM_INFO[s]));
+
+  // 屬性頻率：某屬性被越多符號共有，越是本宮組合的主軸（多數屬性）
+  const attrCount = {};
+  symbols.forEach((sym) => (sym.info.attrs || []).forEach((a) => { attrCount[a] = (attrCount[a] || 0) + 1; }));
+  const attrList = Object.entries(attrCount).sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -229,6 +251,18 @@ function PalaceModal({ p, result, shiZhuPalace, onClose }) {
               {tags.map((x, i) => <span key={i} className="modal-tag">{x}</span>)}
             </div>
           )}
+          {/* 自訂標記：為本宮加上自己的註解（截圖分享解盤用） */}
+          <div className="custom-mark">
+            <span className="custom-mark-label">自訂標記</span>
+            <input
+              className="custom-mark-input"
+              value={customLabel || ''}
+              placeholder="例：問財運、對方、房子…"
+              onChange={(e) => onSetCustom(p, e.target.value)}
+            />
+            {customLabel ? <button type="button" className="custom-mark-clear" onClick={() => onSetCustom(p, '')}>清除</button> : null}
+          </div>
+
           <SymbolRow label="宮位" name={PALACE_NAME[p]} info={PALACE_INFO[p]} />
           <SymbolRow label="八神" name={t(data.god)} info={GOD_INFO[data.god]} />
           {(data.stars || []).map((s, i) => <SymbolRow key={'star' + i} label="九星" name={t(s)} info={STAR_INFO[s]} />)}
@@ -237,11 +271,31 @@ function PalaceModal({ p, result, shiZhuPalace, onClose }) {
           {diStems.map((s, i) => <SymbolRow key={'dg' + i} label="地盤干" name={t(s)} info={STEM_INFO[s]} />)}
 
           <div className="sym-combo">
-            <div className="sym-combo-head">本宮符號組合類象（{allItems.length} 項）</div>
-            <div className="sym-items">
-              {allItems.map((it, i) => <span key={i} className="sym-item combo">{it}</span>)}
+            <div className="sym-combo-head">本宮符號組合類象</div>
+            {attrList.length > 0 && (
+              <div className="attr-block">
+                <div className="attr-head">主導屬性（×2 以上為多個符號共有，是組合主軸）</div>
+                <div className="attr-list">
+                  {attrList.map(([a, c]) => (
+                    <span key={a} className={`attr-chip${c >= 2 ? ' hot' : ''}`}>{a}{c >= 2 ? ` ×${c}` : ''}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="combo-groups">
+              {symbols.map((sym, i) => (
+                <div key={i} className="combo-group">
+                  <div className="combo-group-head">
+                    <span className="combo-group-label">{sym.label}</span>
+                    <span className="combo-group-name">{sym.name}</span>
+                  </div>
+                  <div className="sym-items">
+                    {(sym.info.items || []).map((it, j) => <span key={j} className="sym-item combo">{it}</span>)}
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="sym-combo-note">（日後可接 AI 模型，依多數屬性自動推斷本宮所代表的人事物）</div>
+            <div className="sym-combo-note">（日後可接 AI 模型，依主導屬性與各符號代表物，自動組合推斷本宮所指的人事物）</div>
           </div>
         </div>
       </div>
@@ -265,8 +319,122 @@ export default function App() {
   const [querent, setQuerent] = useState({ mode: '近程', caster: '', querent: '' });
   const shiZhuPalace = useMemo(() => computeShiZhu(result, querent), [result, querent]);
   const toggleGender = (key, val) => setQuerent((q) => ({ ...q, [key]: q[key] === val ? '' : val }));
+  // 時干（時柱天干）落天盤之宮 → 標「時干」
+  const shiGanPalace = result ? result.pillarMarkPalaces[3] : null;
   // 點擊宮位查看各符號象意
   const [selected, setSelected] = useState(null);
+  // 自訂宮位標記 { 宮位: 文字 }（截圖分享解盤用）
+  const [customMarks, setCustomMarks] = useState({});
+  const setCustom = (p, text) => setCustomMarks((m) => {
+    const next = { ...m };
+    if (text && text.trim()) next[p] = text.trim(); else delete next[p];
+    return next;
+  });
+  // 五行生克外圈顯示開關
+  const [showWuxing, setShowWuxing] = useState(false);
+
+  // 量測各宮中心與九宮格範圍（供外圈生克箭頭定位）
+  const wrapRef = useRef(null);
+  const [measure, setMeasure] = useState({ centers: {}, grid: null, w: 0, h: 0 });
+  const recompute = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const wb = wrap.getBoundingClientRect();
+    const centers = {};
+    wrap.querySelectorAll('.cell[data-palace]').forEach((el) => {
+      const b = el.getBoundingClientRect();
+      centers[+el.dataset.palace] = { x: b.left + b.width / 2 - wb.left, y: b.top + b.height / 2 - wb.top };
+    });
+    const gridEl = wrap.querySelector('.grid');
+    let grid = null;
+    if (gridEl) {
+      const gb = gridEl.getBoundingClientRect();
+      grid = { l: gb.left - wb.left, t: gb.top - wb.top, r: gb.right - wb.left, b: gb.bottom - wb.top, cx: gb.left + gb.width / 2 - wb.left, cy: gb.top + gb.height / 2 - wb.top };
+    }
+    setMeasure({ centers, grid, w: wb.width, h: wb.height });
+  }, []);
+  useEffect(() => {
+    recompute();
+    window.addEventListener('resize', recompute);
+    return () => window.removeEventListener('resize', recompute);
+  }, [recompute, result, showWuxing, shiZhuPalace, shiGanPalace, customMarks]);
+
+  // 需標生克的關鍵宮位（事主、時干、自訂標記）
+  const keyPalaces = useMemo(() => {
+    const set = new Set();
+    if (shiZhuPalace) set.add(shiZhuPalace);
+    if (shiGanPalace) set.add(shiGanPalace);
+    Object.keys(customMarks).forEach((p) => set.add(+p));
+    return [...set];
+  }, [shiZhuPalace, shiGanPalace, customMarks]);
+
+  // 各關鍵宮位在格外圈的錨點 + 兩兩之間的生克箭頭（弧形繞外圈，不進九宮格內）
+  const wxData = useMemo(() => {
+    const empty = { anchors: {}, arrows: [] };
+    if (!showWuxing || !measure.grid) return empty;
+    const g = measure.grid;
+    const anchorFor = (p) => {
+      const c = measure.centers[p];
+      if (!c) return null;
+      let dx = c.x - g.cx, dy = c.y - g.cy;
+      const len = Math.hypot(dx, dy) || 1;
+      dx /= len; dy /= len;
+      const m = 12; // 外推至格外圈
+      const l = g.l - m, r = g.r + m, tp = g.t - m, bt = g.b + m;
+      let tt = Infinity;
+      if (dx > 1e-6) tt = Math.min(tt, (r - g.cx) / dx);
+      if (dx < -1e-6) tt = Math.min(tt, (l - g.cx) / dx);
+      if (dy > 1e-6) tt = Math.min(tt, (bt - g.cy) / dy);
+      if (dy < -1e-6) tt = Math.min(tt, (tp - g.cy) / dy);
+      if (!isFinite(tt)) tt = 0;
+      return { x: g.cx + dx * tt, y: g.cy + dy * tt };
+    };
+    const anchors = {};
+    keyPalaces.forEach((p) => { const a = anchorFor(p); if (a) anchors[p] = a; });
+    const arrows = [];
+    for (let i = 0; i < keyPalaces.length; i++) {
+      for (let j = i + 1; j < keyPalaces.length; j++) {
+        const A = keyPalaces[i], B = keyPalaces[j];
+        const a = anchors[A], b = anchors[B];
+        if (!a || !b) continue;
+        const rel = wxRelation(PALACE_INFO[A].wx, PALACE_INFO[B].wx);
+        if (!rel) continue; // 比和不畫
+        const from = rel.swap ? b : a;
+        const to = rel.swap ? a : b;
+        const fromWx = rel.swap ? PALACE_INFO[B].wx : PALACE_INFO[A].wx;
+        const toWx = rel.swap ? PALACE_INFO[A].wx : PALACE_INFO[B].wx;
+        // 控制點：推到格線外的 padding 環（弧線繞外圈，不進九宮格、不超出 wrap）
+        const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+        const ox = mid.x - g.cx, oy = mid.y - g.cy;
+        const olen = Math.hypot(ox, oy);
+        const ring = 22; // 推出格線外的距離
+        let ctrl;
+        if (olen > 1) { // 相鄰/斜對：沿「遠離盤心」方向推出格線外
+          const ux = ox / olen, uy = oy / olen;
+          let tEdge = Infinity;
+          if (ux > 1e-6) tEdge = Math.min(tEdge, (g.r - mid.x) / ux);
+          if (ux < -1e-6) tEdge = Math.min(tEdge, (g.l - mid.x) / ux);
+          if (uy > 1e-6) tEdge = Math.min(tEdge, (g.b - mid.y) / uy);
+          if (uy < -1e-6) tEdge = Math.min(tEdge, (g.t - mid.y) / uy);
+          if (!isFinite(tEdge) || tEdge < 0) tEdge = 0;
+          ctrl = { x: mid.x + ux * (tEdge + ring), y: mid.y + uy * (tEdge + ring) };
+        } else { // 對宮（中點≈盤心）：繞側邊格外
+          const px = -(to.y - from.y), py = (to.x - from.x);
+          const plen = Math.hypot(px, py) || 1;
+          const ux = px / plen, uy = py / plen;
+          const tEdge = (Math.abs(ux) > Math.abs(uy) ? (g.cx - g.l) : (g.cy - g.t)) + ring;
+          ctrl = { x: mid.x + ux * tEdge, y: mid.y + uy * tEdge };
+        }
+        arrows.push({
+          from, to, ctrl, type: rel.type,
+          lx: (from.x + 2 * ctrl.x + to.x) / 4,
+          ly: (from.y + 2 * ctrl.y + to.y) / 4,
+          label: `${fromWx}${rel.type}${toWx}`,
+        });
+      }
+    }
+    return { anchors, arrows };
+  }, [showWuxing, keyPalaces, measure]);
 
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
   const onChange = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -377,15 +545,28 @@ export default function App() {
                     <button type="button" className={querent.querent === '女' ? 'on' : ''} onClick={() => toggleGender('querent', '女')}>女</button>
                   </div>
                 </div>
-                {querent.mode === '遠程' && (
-                  <span className="q-result">
-                    {shiZhuPalace ? `事主落 ${PALACE_SHORT[shiZhuPalace]}宮` : '設定開盤人與問事人性別後顯示事主'}
-                  </span>
-                )}
+                <span className="q-result">
+                  {shiZhuPalace
+                    ? `事主落 ${PALACE_SHORT[shiZhuPalace]}宮（${querent.mode}）`
+                    : (querent.mode === '遠程' ? '設定開盤人與問事人性別後顯示事主' : '')}
+                </span>
+                <button type="button" className={`wx-toggle${showWuxing ? ' on' : ''}`} onClick={() => setShowWuxing((v) => !v)}>
+                  五行生克{showWuxing ? '·顯示' : '·隱藏'}
+                </button>
               </div>
-              <div className="grid-wrap">
+              <div className={`grid-wrap${showWuxing ? ' wx-on' : ''}`} ref={wrapRef}>
                 <div className="grid">
-                  {GRID.map((p) => <PalaceCell key={p} data={result.palaces[p]} result={result} shiZhu={p === shiZhuPalace} onSelect={() => setSelected(p)} />)}
+                  {GRID.map((p) => (
+                    <PalaceCell
+                      key={p}
+                      data={result.palaces[p]}
+                      result={result}
+                      shiZhu={p === shiZhuPalace}
+                      shiGan={p === shiGanPalace}
+                      customLabel={customMarks[p]}
+                      onSelect={() => setSelected(p)}
+                    />
+                  ))}
                 </div>
                 {/* 外干（隐干）：贴各宮外側方位；中五宮外干寄 waiganJiGong 宮並列 */}
                 {[4, 9, 2, 3, 7, 8, 1, 6].map((p) => (
@@ -394,6 +575,32 @@ export default function App() {
                     {p === result.waiganJiGong && <span className="waigan-ji">{t(result.waiganCenter)}</span>}
                   </span>
                 ))}
+                {/* 五行生克：外圈弧形箭頭（事主／時干／自訂標記之間），不進九宮格內 */}
+                {showWuxing && measure.grid && (
+                  <svg className="wx-overlay" width={measure.w} height={measure.h} viewBox={`0 0 ${measure.w} ${measure.h}`}>
+                    <defs>
+                      <marker id="wxSheng" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 Z" fill="#2e7d32" /></marker>
+                      <marker id="wxKe" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 Z" fill="#c62828" /></marker>
+                    </defs>
+                    {wxData.arrows.map((a, i) => (
+                      <g key={i} className={`wx-arrow ${a.type === '生' ? 'sheng' : 'ke'}`}>
+                        <path d={`M ${a.from.x} ${a.from.y} Q ${a.ctrl.x} ${a.ctrl.y} ${a.to.x} ${a.to.y}`} fill="none" markerEnd={`url(#${a.type === '生' ? 'wxSheng' : 'wxKe'})`} />
+                        <text x={a.lx} y={a.ly} className="wx-label">{a.label}</text>
+                      </g>
+                    ))}
+                    {keyPalaces.map((p) => {
+                      const a = wxData.anchors[p];
+                      if (!a) return null;
+                      const wx = PALACE_INFO[p].wx;
+                      return (
+                        <g key={'wx' + p} className={`wx-dot wxx-${wx}`}>
+                          <circle cx={a.x} cy={a.y} r="11" />
+                          <text x={a.x} y={a.y}>{wx}</text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                )}
               </div>
               <div className="legend">
                 <span><span className="sw mk-green">破</span>＝門迫（綠）</span>
@@ -402,13 +609,24 @@ export default function App() {
                 <span><span className="sw mk-purple">墓刑</span>＝入墓+擊刑（紫）</span>
                 <span><span className="sw horse-badge">馬</span> 馬星（落{PALACE_SHORT[result.horse.palace]}宮）</span>
                 <span>外圈干＝外干（隐干）</span>
-                <span className="legend-tip">點擊宮位可查看各符號象意</span>
+                <span><span className="sw mk-badge mk-shizhu">事主</span>（紅）</span>
+                <span><span className="sw mk-badge mk-shigan">時干</span>（藍）</span>
+                <span><span className="sw mk-badge mk-custom">註</span>自訂（綠）</span>
+                <span className="legend-tip">點擊宮位看象意＋自訂標記</span>
               </div>
             </div>
           </div>
 
           {selected != null && (
-            <PalaceModal p={selected} result={result} shiZhuPalace={shiZhuPalace} onClose={() => setSelected(null)} />
+            <PalaceModal
+              p={selected}
+              result={result}
+              shiZhuPalace={shiZhuPalace}
+              shiGanPalace={shiGanPalace}
+              customLabel={customMarks[selected]}
+              onSetCustom={setCustom}
+              onClose={() => setSelected(null)}
+            />
           )}
         </ErrorBoundary>
       )}
