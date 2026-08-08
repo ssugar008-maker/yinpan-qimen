@@ -83,6 +83,33 @@ function xkPalacePrompt(c, palaceName) {
 整體 300 字內，分點清楚。`;
 }
 
+// 奇門：自動尋物（時干為物、日干為事主）
+function qimenFindPrompt(d) {
+  const symLines = d.item.symbols.map((s) => `【${s.label}・${s.name}】象意：${s.meaning || ''}｜屬性：${(s.attrs || []).join('、')}｜類象：${(s.items || []).slice(0, 12).join('、')}`).join('\n');
+  return `以下是奇門遁甲陰盤的「尋物」推算。時干所落之宮代表遺失物品，日干所落之宮代表事主（尋物者）。已算好的事實與規則如下，請綜合給出尋物判斷。
+
+【尋物規則】
+- 事主宮五行剋物品宮 → 容易找到；物品宮剋事主宮 → 較難找；物品宮生事主宮 → 物品會回來、易尋；事主宮生物品宮 → 要費力去尋；兩宮同五行 → 吉凶不明顯（平）。
+- 伏吟主慢、反吟主快。
+- 兩宮同宮 → 物品就在事主附近／所在地；相鄰 → 不遠；相隔越遠越費時。
+- 物品宮內的符號組合，用來推斷物品「可能在哪裡、被什麼遮蓋或伴隨」。
+
+【本盤事實】
+- 時干 ${d.hourGan}（物品）落 ${d.item.palace}（五行屬${d.item.wx}）。
+- 日干 ${d.dayGan}（事主）落 ${d.querent.palace}（五行屬${d.querent.wx}）。
+- 兩宮生克：${d.relation} → 判定：${d.ease}。
+- 伏吟／反吟：${d.speed}。
+- 兩宮距離：${d.distance}。
+- 物品宮（${d.item.palace}）符號：
+${symLines}
+
+請給出尋物分析，條理清楚：
+1. 能否找到：綜合難易與快慢，給出明確判斷（易／難、快／慢）。
+2. 物品可能在哪：結合物品宮的八卦方位與宮內符號組合，推斷具體地點或環境（高處／低處、金屬容器內、木器旁、被布遮蓋…），指出哪些符號提供了哪些線索。
+3. 尋找建議：往哪個方位、什麼類型的地方找，以及時機快慢。
+整體 320 字內，分點清楚。`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
   const apiKeyRaw = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.Qimen;
@@ -93,10 +120,13 @@ export default async function handler(req, res) {
 
   let payload = req.body;
   if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
-  const { task, theme, custom, palace, symbols, chart } = payload || {};
+  const { task, theme, custom, palace, symbols, chart, find } = payload || {};
 
   let prompt;
-  if (task === 'xkOverall') {
+  if (task === 'qimenFind') {
+    if (!find || !find.item || !find.querent) { res.status(400).json({ error: '缺少尋物資料' }); return; }
+    prompt = qimenFindPrompt(find);
+  } else if (task === 'xkOverall') {
     if (!chart || !Array.isArray(chart.palaces)) { res.status(400).json({ error: '缺少玄空盤資料' }); return; }
     prompt = xkOverallPrompt(chart);
   } else if (task === 'xkPalace') {

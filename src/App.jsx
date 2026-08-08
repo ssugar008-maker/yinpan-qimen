@@ -23,6 +23,10 @@ const PALACE_SHORT = {
 // 洛书九宫布局：巽4 离9 坤2 / 震3 中5 兑7 / 艮8 坎1 乾6
 const GRID = [4, 9, 2, 3, 5, 7, 8, 1, 6];
 const PILLAR_LABELS = ['年', '月', '日', '時']; // 各柱天干落天盤之宮 → 標於該宮左上
+// 尋物用：九星本宮（简体，與 engine 一致）、對宮、後天八卦環（坎艮震巽離坤兌乾）
+const STAR_HOME_S = { 1: '天蓬', 8: '天任', 3: '天冲', 4: '天辅', 9: '天英', 2: '天芮', 7: '天柱', 6: '天心' };
+const OPP_PALACE = { 1: 9, 9: 1, 2: 8, 8: 2, 3: 7, 7: 3, 4: 6, 6: 4 };
+const RING8 = [1, 8, 3, 4, 9, 2, 7, 6];
 
 // 外干（隐干）在九宮格外的方位（依各宮洛书方位贴边）
 const WAIGAN_POS = {
@@ -552,6 +556,90 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
   );
 }
 
+// 自動尋物：時干為物、日干為事主，綜合生克/伏吟反吟/距離/符號，AI 給出判斷
+const FIND_KEY = 'qimen_find_v1';
+function FindItemPanel({ result, chartKey }) {
+  const itemP = result.pillarMarkPalaces[3];   // 時干宮（物品）
+  const querentP = result.pillarMarkPalaces[2]; // 日干宮（事主）
+  const [ai, setAi] = useState({ loading: false, text: '', error: '' });
+  useEffect(() => {
+    try { const v = JSON.parse(localStorage.getItem(FIND_KEY)) || {}; setAi({ loading: false, text: v[chartKey] || '', error: '' }); } catch { setAi({ loading: false, text: '', error: '' }); }
+  }, [chartKey]);
+
+  const info = useMemo(() => {
+    if (!itemP || !querentP) return null;
+    const itemWx = PALACE_INFO[itemP].wx, qWx = PALACE_INFO[querentP].wx;
+    let relation, ease;
+    if (itemP === querentP) { relation = '兩宮同宮'; ease = '物品就在事主附近'; }
+    else if (WUXING_KE[qWx] === itemWx) { relation = `事主宮(${qWx}) 剋 物品宮(${itemWx})`; ease = '容易找到'; }
+    else if (WUXING_KE[itemWx] === qWx) { relation = `物品宮(${itemWx}) 剋 事主宮(${qWx})`; ease = '較難找到'; }
+    else if (WUXING_SHENG[itemWx] === qWx) { relation = `物品宮(${itemWx}) 生 事主宮(${qWx})`; ease = '物品易尋回'; }
+    else if (WUXING_SHENG[qWx] === itemWx) { relation = `事主宮(${qWx}) 生 物品宮(${itemWx})`; ease = '需費力尋找'; }
+    else { relation = `兩宮同屬${qWx}`; ease = '吉凶不明顯（平）'; }
+    const outer = [1, 2, 3, 4, 6, 7, 8, 9];
+    const fuYin = outer.every((p) => (result.palaces[p].stars || [])[0] === STAR_HOME_S[p]);
+    const fanYin = !fuYin && outer.every((p) => (result.palaces[p].stars || [])[0] === STAR_HOME_S[OPP_PALACE[p]]);
+    const speed = fuYin ? '伏吟：主慢，需時較久' : fanYin ? '反吟：主快，較快找到' : '星已轉動：速度平常';
+    const di = RING8.indexOf(itemP), dq = RING8.indexOf(querentP);
+    const rd = Math.min(Math.abs(di - dq), 8 - Math.abs(di - dq));
+    const distance = itemP === querentP ? '同宮（物品在事主所在地）' : rd === 1 ? '相鄰（物品不遠）' : rd === 4 ? '對宮（相隔最遠）' : `相隔 ${rd} 位`;
+    const data = result.palaces[itemP];
+    const symbols = [];
+    const addSym = (label, name, inf) => { if (inf) symbols.push({ label, name, info: inf }); };
+    addSym('宮位', PALACE_NAME[itemP], PALACE_INFO[itemP]);
+    addSym('八神', t(data.god), GOD_INFO[data.god]);
+    (data.stars || []).forEach((s) => addSym('九星', t(s), STAR_INFO[s]));
+    addSym('八門', t(data.door), DOOR_INFO[data.door]);
+    (data.tianGan || []).forEach((s) => addSym('天盤干', t(s), STEM_INFO[s]));
+    [data.diGan, data.diGanExtra].filter(Boolean).forEach((s) => addSym('地盤干', t(s), STEM_INFO[s]));
+    return { itemWx, qWx, relation, ease, speed, distance, symbols, fuYin, fanYin };
+  }, [result, itemP, querentP]);
+
+  if (!info) return null;
+  const runAi = async () => {
+    setAi({ loading: true, text: '', error: '' });
+    try {
+      const payload = {
+        task: 'qimenFind',
+        find: {
+          hourGan: t(result.pillarStems[3]), dayGan: t(result.pillarStems[2]),
+          item: { palace: PALACE_NAME[itemP], wx: info.itemWx, symbols: info.symbols.map((s) => ({ label: s.label, name: s.name, meaning: s.info.meaning, attrs: s.info.attrs, items: s.info.items })) },
+          querent: { palace: PALACE_NAME[querentP], wx: info.qWx },
+          relation: info.relation, ease: info.ease, speed: info.speed, distance: info.distance,
+        },
+      };
+      const r = await fetch('/api/interpret', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `AI 分析失敗（${r.status}）`);
+      const text = (data.text || '').trim();
+      setAi({ loading: false, text, error: '' });
+      if (text) { try { const v = JSON.parse(localStorage.getItem(FIND_KEY)) || {}; v[chartKey] = text; localStorage.setItem(FIND_KEY, JSON.stringify(v)); } catch { } }
+    } catch (e) { setAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
+  };
+
+  const dirOf = (p) => PALACE_INFO[p].meaning.split('、')[0];
+  return (
+    <details className="panel collapsible find-panel" open>
+      <summary className="panel-head">自動尋物（時干為物・日干為事主）</summary>
+      <div className="panel-body">
+        <div className="find-grid">
+          <div className="find-row"><span className="find-k">物品（時干 {t(result.pillarStems[3])}）</span><span className="find-v">{PALACE_NAME[itemP]}・{dirOf(itemP)}・屬{info.itemWx}</span></div>
+          <div className="find-row"><span className="find-k">事主（日干 {t(result.pillarStems[2])}）</span><span className="find-v">{PALACE_NAME[querentP]}・{dirOf(querentP)}・屬{info.qWx}</span></div>
+          <div className="find-row"><span className="find-k">生克</span><span className="find-v">{info.relation} → <b className="find-ease">{info.ease}</b></span></div>
+          <div className="find-row"><span className="find-k">快慢</span><span className="find-v">{info.speed}</span></div>
+          <div className="find-row"><span className="find-k">距離</span><span className="find-v">{info.distance}</span></div>
+        </div>
+        <button type="button" className="ai-btn" onClick={runAi} disabled={ai.loading}>
+          {ai.loading ? 'AI 分析中…' : (ai.text ? '↻ 重新分析（已存檔）' : '✨ AI 尋物分析（方位＋可能地點）')}
+        </button>
+        {ai.error && <div className="ai-error">{ai.error}</div>}
+        {ai.text && <div className="ai-result">{ai.text}</div>}
+        {ai.text && <div className="ai-saved">✓ 已存檔（本盤），重整頁面亦保留</div>}
+      </div>
+    </details>
+  );
+}
+
 export default function App() {
   const [form, setForm] = useState({ year: 2026, month: 5, day: 16, hour: 11, minute: 38, name: '', sex: '乾造' });
   const [submitted, setSubmitted] = useState({ ...form });
@@ -950,6 +1038,8 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          <FindItemPanel result={result} chartKey={chartKey} />
 
           <details className="panel collapsible ai-hist-panel">
             <summary className="panel-head">AI 解讀記錄{aiLib.length ? `（${aiLib.length}）` : ''}</summary>

@@ -449,6 +449,13 @@ body {
   border-radius: 8px; margin-bottom: 8px; font-family: inherit; box-sizing: border-box;
 }
 .ai-hist-theme { font-size: 10px; font-weight: 700; color: #fff; background: #9a86c0; padding: 1px 7px; border-radius: 9px; margin-left: 6px; }
+/* 自動尋物 */
+.find-grid { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.find-row { display: flex; gap: 8px; font-size: 13px; align-items: baseline; }
+.find-k { flex: 0 0 108px; color: #6a5f4f; font-weight: 600; font-size: 12px; }
+.find-v { flex: 1; color: #2a2418; }
+.find-ease { color: var(--accent); }
+@media (max-width: 640px) { .find-k { flex-basis: 92px; } }
 
 /* ── AI 解讀記錄（library / history）── */
 .ai-hist-panel summary.panel-head { cursor: pointer; }
