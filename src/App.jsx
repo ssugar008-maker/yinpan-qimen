@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { Solar } from 'lunar-javascript';
 import { paipan } from './qimen/engine.js';
 import { DOOR_INFO, STAR_INFO, GOD_INFO, STEM_INFO, PALACE_INFO, WUXING_SHENG, WUXING_KE } from './qimen/symbols.js';
 
@@ -90,6 +91,183 @@ function wxRelation(wxA, wxB) {
   if (WUXING_KE[wxA] === wxB) return { type: '克' }; // A克B
   if (WUXING_KE[wxB] === wxA) return { type: '克', swap: true }; // B克A
   return null;
+}
+
+// ── 九宮飛星 ─────────────────────────────────────────────
+// 飛行路徑（中5→乾6→兌7→艮8→離9→坎1→坤2→震3→巽4）
+const STAR_FLIGHT = [5, 6, 7, 8, 9, 1, 2, 3, 4];
+// 各宮方位（風水佈局用）
+const PALACE_DIR = { 1: '正北', 2: '西南', 3: '正東', 4: '東南', 5: '中宮', 6: '西北', 7: '正西', 8: '東北', 9: '正南' };
+// 年飛星入中：以 2026=1 為錨，每年退一（1→9 循環），適用任意年份
+function yearCenterStar(year) {
+  return (((2026 - year) % 9) + 9) % 9 + 1;
+}
+// 回傳 { 宮位: 飛星(1-9) }
+function annualStars(year) {
+  const center = yearCenterStar(year);
+  const map = {};
+  for (let i = 0; i < 9; i++) map[STAR_FLIGHT[i]] = ((center - 1 + i) % 9) + 1;
+  return map;
+}
+// 九星資料：五行、吉凶、掌管、催旺（吉星）/化解（凶星）
+const FLYING_STAR_INFO = {
+  1: { short: '一白', name: '一白貪狼星', wx: '水', ji: '吉', governs: '桃花、人緣、官貴、財運、智慧、遠行', enhance: '宜放水種植物、小魚缸、流水擺設（水），或金屬物品（金生水）催旺；忌土色過重。' },
+  2: { short: '二黑', name: '二黑巨門星', wx: '土', ji: '凶', governs: '疾病、傷痛、婦女健康（病符星）', cure: '宜放六帝錢、銅葫蘆、金屬風鈴（金泄土氣）化病；忌紅色、黃色、動土、此位久坐久臥。' },
+  3: { short: '三碧', name: '三碧祿存星', wx: '木', ji: '凶', governs: '是非、口舌、官非、爭執、盜竊', cure: '宜放紅色物品、燈飾（火泄木氣）化是非；忌綠色、植物過多、此位爭吵。' },
+  4: { short: '四綠', name: '四綠文昌星', wx: '木', ji: '吉', governs: '文昌、學業、考試、名聲、創作、桃花', enhance: '宜放文昌塔、毛筆、四支富貴竹、水種植物（水生木）催文昌；宜作書房、書桌位。' },
+  5: { short: '五黃', name: '五黃廉貞星', wx: '土', ji: '大凶', governs: '災禍、疾病、意外、破財、官非（最凶之星）', cure: '宜放六帝錢、銅鈴、銅葫蘆、金屬擺設（金泄土氣）化解；極忌紅色、黃色、動土、裝修、此位動火。宜靜不宜動。' },
+  6: { short: '六白', name: '六白武曲星', wx: '金', ji: '吉', governs: '權力、地位、偏財、貴人、升遷、武職', enhance: '宜放金屬物品、白色/金色擺設、八粒白石（土生金）催旺；宜作辦公、收銀位。' },
+  7: { short: '七赤', name: '七赤破軍星', wx: '金', ji: '凶', governs: '破財、盜賊、口舌、刀劍傷、是非', cure: '宜放藍色物品、一杯水、水種植物（水泄金氣）化解；忌金屬過多、白色、尖銳物。' },
+  8: { short: '八白', name: '八白左輔星', wx: '土', ji: '吉', governs: '正財、置業、田產、穩定之財（當運財星）', enhance: '宜放紅色/紫色物品、燈飾、紫水晶、陶瓷（火生土）催財；保持明亮整潔，宜作財位、大門。' },
+  9: { short: '九紫', name: '九紫右弼星', wx: '火', ji: '吉', governs: '喜慶、婚姻、桃花、添丁、名氣（未來當運星）', enhance: '宜放植物、紅色/紫色物品、燈飾（木生火）催喜慶；保持光亮，宜作客廳、喜位。' },
+};
+// 宮星五行互動 → 吉凶判斷 + 化解/催旺
+function analyzeFlyingStar(palace, star) {
+  const info = FLYING_STAR_INFO[star];
+  const pw = PALACE_INFO[palace].wx, sw = info.wx;
+  const good = info.ji === '吉';
+  const pn = `${PALACE_SHORT[palace]}宮（${PALACE_DIR[palace]}，屬${pw}）`;
+  let rel = '', effect = '', level = info.ji;
+  if (pw === sw) {
+    rel = `${pn}，與${info.name}（屬${sw}）比和同氣`;
+    effect = good ? '宮星同氣，吉力增強，順遂。' : '宮星同氣，凶力增強，宜及早化解。';
+  } else if (WUXING_SHENG[pw] === sw) {
+    rel = `${pn}，${pw}生${sw}（宮生星）`;
+    effect = good ? '宮位生扶吉星，吉上加吉，力量更盛。' : '宮位生扶凶星，凶力倍增（病上更病），務必化解。';
+    if (!good) level = '大凶';
+  } else if (WUXING_SHENG[sw] === pw) {
+    rel = `${info.name}屬${sw}，${sw}生${pw}（星生宮）`;
+    effect = good ? '星氣生宮而外泄，吉力稍減，仍屬吉。' : '凶氣生宮而外泄，凶力稍減，仍宜化解。';
+  } else if (WUXING_KE[pw] === sw) {
+    rel = `${pn}，${pw}剋${sw}（宮剋星）`;
+    effect = good ? '吉星受宮位剋制，吉力大減，宜催旺補救。' : '凶星受宮位剋制，凶力受制減輕。';
+    if (good) level = '平'; else level = '凶減';
+  } else if (WUXING_KE[sw] === pw) {
+    rel = `${info.name}屬${sw}，${sw}剋${pw}（星剋宮）`;
+    effect = good ? '星剋宮位，星宮相戰，吉中藏憂。' : '星剋宮位，凶氣直攻，相戰更凶，務必化解。';
+    if (!good) level = '大凶';
+  }
+  return { rel, effect, level, info };
+}
+
+// ── 月份時間（節氣月）─────────────────────────────────────
+// 十二地支月以「節」為界：寅月立春起、卯月驚蟄起……子月大雪起、丑月小寒起
+function branchMonths(year) {
+  const tY = Solar.fromYmdHms(year, 7, 1, 12, 0, 0).getLunar().getJieQiTable();
+  const tN = Solar.fromYmdHms(year + 1, 7, 1, 12, 0, 0).getLunar().getJieQiTable();
+  const rows = [
+    { branch: '寅', jie: '立春', start: tY['立春'], end: tY['惊蛰'] },
+    { branch: '卯', jie: '驚蟄', start: tY['惊蛰'], end: tY['清明'] },
+    { branch: '辰', jie: '清明', start: tY['清明'], end: tY['立夏'] },
+    { branch: '巳', jie: '立夏', start: tY['立夏'], end: tY['芒种'] },
+    { branch: '午', jie: '芒種', start: tY['芒种'], end: tY['小暑'] },
+    { branch: '未', jie: '小暑', start: tY['小暑'], end: tY['立秋'] },
+    { branch: '申', jie: '立秋', start: tY['立秋'], end: tY['白露'] },
+    { branch: '酉', jie: '白露', start: tY['白露'], end: tY['寒露'] },
+    { branch: '戌', jie: '寒露', start: tY['寒露'], end: tY['立冬'] },
+    { branch: '亥', jie: '立冬', start: tY['立冬'], end: tY['大雪'] },
+    { branch: '子', jie: '大雪', start: tY['大雪'], end: tN['小寒'] },
+    { branch: '丑', jie: '小寒', start: tY['小寒'], end: tY['立春'] },
+  ];
+  rows.sort((a, b) => (a.start.toYmdHms() < b.start.toYmdHms() ? -1 : 1)); // 按國曆先後排序
+  const fmt = (s) => s.toYmdHms().slice(5, 16); // "MM-DD HH:mm"
+  return rows.map((r) => ({ branch: r.branch, jie: r.jie, start: fmt(r.start), end: fmt(r.end), startFull: r.start.toYmdHms(), endFull: r.end.toYmdHms() }));
+}
+
+// 月份時間分頁
+function MonthsPanel() {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const rows = useMemo(() => branchMonths(year), [year]);
+  const pad = (n) => String(n).padStart(2, '0');
+  const nowStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+  return (
+    <div className="panel">
+      <div className="panel-head">月份時間（節氣月）</div>
+      <div className="panel-body">
+        <div className="year-picker">
+          <button type="button" onClick={() => setYear(year - 1)}>‹</button>
+          <span className="year-label">{year} 年</span>
+          <button type="button" onClick={() => setYear(year + 1)}>›</button>
+        </div>
+        <table className="month-table">
+          <thead><tr><th>月份</th><th>起節</th><th>開始（國曆）</th><th>結束（國曆）</th></tr></thead>
+          <tbody>
+            {rows.map((r) => {
+              const cur = nowStr >= r.startFull && nowStr < r.endFull;
+              return (
+                <tr key={r.branch} className={cur ? 'cur-month' : ''}>
+                  <td className="m-branch">{r.branch}月{cur ? '（今）' : ''}</td>
+                  <td>{r.jie}</td><td>{r.start}</td><td>{r.end}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div className="month-note">說明：命理月份以「節」為界（非農曆初一、亦非國曆初一）。如寅月由立春起、卯月由驚蟄起、子月由大雪起、丑月由小寒起。跨年的子月／丑月已標示其國曆起訖。</div>
+      </div>
+    </div>
+  );
+}
+
+// 九宮飛星分頁
+function StarsPanel() {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const stars = useMemo(() => annualStars(year), [year]);
+  const center = yearCenterStar(year);
+  const gz = useMemo(() => Solar.fromYmdHms(year, 6, 1, 12, 0, 0).getLunar().getYearInGanZhi(), [year]);
+  return (
+    <div className="panel">
+      <div className="panel-head">九宮飛星（{year} 年）</div>
+      <div className="panel-body">
+        <div className="year-picker">
+          <button type="button" onClick={() => setYear(year - 1)}>‹</button>
+          <span className="year-label">{year} 年（{t(gz)}年）</span>
+          <button type="button" onClick={() => setYear(year + 1)}>›</button>
+        </div>
+        <div className="fly-summary">{year} 年立春後入{center}宮（{FLYING_STAR_INFO[center].name}入中）。下圖為各宮年飛星：</div>
+        <div className="fly-grid">
+          {GRID.map((p) => {
+            const star = stars[p];
+            const info = FLYING_STAR_INFO[star];
+            const ji = info.ji === '吉' ? 'ji' : (info.ji === '大凶' ? 'daxiong' : 'xiong');
+            return (
+              <div key={p} className={`fly-cell ${ji}${p === 5 ? ' center' : ''}`}>
+                <div className="fly-star">{star}</div>
+                <div className="fly-starname">{info.short}</div>
+                <div className="fly-palace">{PALACE_SHORT[p]}·{PALACE_INFO[p].wx}</div>
+                <div className="fly-dir">{PALACE_DIR[p]}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="fly-legend">
+          <span><span className="sw fly-ji">吉</span>吉星</span>
+          <span><span className="sw fly-xiong">凶</span>凶星</span>
+          <span><span className="sw fly-daxiong">大凶</span>五黃等最凶</span>
+        </div>
+        <div className="fly-analysis">
+          {GRID.map((p) => {
+            const star = stars[p];
+            const a = analyzeFlyingStar(p, star);
+            const good = a.info.ji === '吉';
+            return (
+              <div key={p} className={`fly-row ${good ? 'good' : 'bad'}`}>
+                <div className="fly-row-head">
+                  <span className="fly-row-title">{PALACE_SHORT[p]}宮（{PALACE_DIR[p]}）— {star} {a.info.name}</span>
+                  <span className={`fly-level lv-${a.level}`}>{a.level}</span>
+                </div>
+                <div className="fly-row-rel">{a.rel}。{a.effect}</div>
+                <div className="fly-row-gov">掌管：{a.info.governs}</div>
+                <div className="fly-row-cure">{good ? '催旺：' : '化解：'}{good ? a.info.enhance : a.info.cure}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // 四柱八字直式排列：年 / 月 / 日 / 時 各為一柱（上干下支），末柱為時柱空亡
@@ -387,6 +565,8 @@ export default function App() {
   };
   const deleteAiReading = (key) => setAiLib((lib) => { const next = lib.filter((x) => x.key !== key); persistAiLib(next); return next; });
   const clearAiLib = () => { persistAiLib([]); setAiLib([]); };
+  // 分頁：排盤 / 月份時間 / 九宮飛星
+  const [tab, setTab] = useState('chart');
   // 五行生克外圈顯示開關
   const [showWuxing, setShowWuxing] = useState(false);
 
@@ -569,6 +749,16 @@ export default function App() {
     <div className="page">
       <h1 className="title">陰盤奇門排盤（時盤）</h1>
 
+      <div className="tabs">
+        <button type="button" className={`tab${tab === 'chart' ? ' active' : ''}`} onClick={() => setTab('chart')}>陰盤奇門</button>
+        <button type="button" className={`tab${tab === 'months' ? ' active' : ''}`} onClick={() => setTab('months')}>月份時間</button>
+        <button type="button" className={`tab${tab === 'stars' ? ' active' : ''}`} onClick={() => setTab('stars')}>九宮飛星</button>
+      </div>
+
+      {tab === 'months' && <MonthsPanel />}
+      {tab === 'stars' && <StarsPanel />}
+
+      {tab === 'chart' && (<>
       <details className="panel collapsible" open={!isMobile}>
         <summary className="panel-head">排盤輸入</summary>
         <div className="panel-body">
@@ -768,6 +958,7 @@ export default function App() {
           )}
         </ErrorBoundary>
       )}
+      </>)}
     </div>
   );
 }
