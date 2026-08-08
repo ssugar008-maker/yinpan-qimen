@@ -384,8 +384,10 @@ export default function App() {
   }, []);
   useEffect(() => {
     recompute();
+    const raf = requestAnimationFrame(recompute);
+    const tm = setTimeout(recompute, 250); // 手機上等佈局穩定後再量一次，避免五行生克箭頭位移
     window.addEventListener('resize', recompute);
-    return () => window.removeEventListener('resize', recompute);
+    return () => { cancelAnimationFrame(raf); clearTimeout(tm); window.removeEventListener('resize', recompute); };
   }, [recompute, result, showWuxing, shiZhuPalace, shiGanPalace, customMarks]);
 
   // 需標生克的關鍵宮位（事主、時干、自訂標記）

@@ -129,10 +129,7 @@ body {
 .grid-wrap {
   position: relative;
   padding: 26px 30px; /* 给外圈外干留位 */
-  transition: padding 0.2s ease;
-}
-.grid-wrap.wx-on {
-  padding: 58px; /* 顯示五行生克時加大外圈，讓箭頭走外環（外干之內）不進九宮格 */
+  /* 不加 transition：padding 改變須即時生效，否則 recompute 會在動畫中途讀到舊位置，導致五行生克箭頭位移/被裁 */
 }
 .grid {
   display: grid;
