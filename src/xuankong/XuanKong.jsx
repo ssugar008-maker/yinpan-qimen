@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   GRID, PALACE_DIR, PALACE_GUA, STAR_JI, PERIODS, MOUNTAINS24,
   oppositeMountain, xuanKongChart, chartTypes, castleGate, starPair, remedyText,
@@ -81,6 +81,39 @@ export default function XuanKong() {
   const degNum = parseFloat(degree);
   const jianXiang = !isNaN(degNum) && Math.abs(degreeOffset(degNum)) >= 4.5;
 
+  // ── AI 風水分析（整體 / 各宮）──
+  const XK_AI_KEY = 'xuankong_ai_v1';
+  const loadXkAi = () => { try { const v = JSON.parse(localStorage.getItem(XK_AI_KEY)); return v && typeof v === 'object' ? v : {}; } catch { return {}; } };
+  const [xkAiLib, setXkAiLib] = useState(loadXkAi);
+  const [aiScope, setAiScope] = useState('整體');
+  const chartPayload = useMemo(() => ({
+    sit: sitM, face: faceM, period, flowYear, flowStar,
+    types: types.map((t) => ({ n: t.n, t: t.t })),
+    palaces: GRID.map((p) => {
+      const c = starPair(chart.sG[p], chart.fG[p]);
+      return { name: PALACE_GUA[p], dir: PALACE_DIR[p], shan: chart.sG[p], xiang: chart.fG[p], yun: chart.pG[p], flow: flow[p], combo: c.n, ji: c.t };
+    }),
+  }), [sitM, faceM, period, flowYear, flowStar, types, chart, flow]);
+  const aiKey = `${sitM}${faceM}|${period}|${flowYear}|${aiScope}`;
+  const [xkAi, setXkAi] = useState({ loading: false, text: '', error: '' });
+  useEffect(() => { setXkAi({ loading: false, text: xkAiLib[aiKey] || '', error: '' }); }, [aiKey]);
+  const runXkAi = async () => {
+    setXkAi({ loading: true, text: '', error: '' });
+    try {
+      const isOverall = aiScope === '整體';
+      const r = await fetch('/api/interpret', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: isOverall ? 'xkOverall' : 'xkPalace', chart: chartPayload, palace: isOverall ? undefined : aiScope }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `AI 分析失敗（${r.status}）`);
+      const text = (data.text || '').trim();
+      setXkAi({ loading: false, text, error: '' });
+      if (text) setXkAiLib((lib) => { const next = { ...lib, [aiKey]: text }; try { localStorage.setItem(XK_AI_KEY, JSON.stringify(next)); } catch {} return next; });
+    } catch (e) { setXkAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
+  };
+  const AI_SCOPES = ['整體', ...GRID.map((p) => PALACE_GUA[p])];
+
   // 星曜組合（九宮格用）
   const combos = GRID.map((p) => ({ p, combo: starPair(chart.sG[p], chart.fG[p]) }));
   const badCombos = combos.filter((c) => c.combo.r);
@@ -153,6 +186,28 @@ export default function XuanKong() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* AI 風水分析 */}
+      <div className="panel">
+        <div className="panel-head">AI 風水分析（整體／各宮）</div>
+        <div className="panel-body">
+          <div className="ai-theme-row">
+            <span className="ai-theme-label">分析範圍</span>
+            <div className="ai-theme-chips">
+              {AI_SCOPES.map((s) => (
+                <button key={s} type="button" className={`ai-theme-chip${aiScope === s ? ' active' : ''}`} onClick={() => setAiScope(s)}>{s}</button>
+              ))}
+            </div>
+          </div>
+          <button type="button" className="ai-btn" onClick={runXkAi} disabled={xkAi.loading}>
+            {xkAi.loading ? 'AI 分析中…' : (xkAi.text ? `↻ 重新分析（${aiScope}，已存檔）` : `✨ AI 分析：${aiScope === '整體' ? '整體格局＋化解' : `${aiScope}宮組合＋化解`}`)}
+          </button>
+          {xkAi.error && <div className="ai-error">{xkAi.error}</div>}
+          {xkAi.text && <div className="ai-result">{xkAi.text}</div>}
+          {xkAi.text && <div className="ai-saved">✓ 已存檔（本坐向／運／流年／範圍），重整頁面亦保留</div>}
+          <div className="sym-combo-note">（AI 以玄空大師角度，結合格局、山向星、五行生剋與流年，給出吉凶判斷與化解催旺方案）</div>
         </div>
       </div>
 

@@ -402,7 +402,8 @@ function SymbolRow({ label, name, info, tagExtra }) {
 }
 
 // 宮位詳情彈窗：列出該宮所有符號的象意與代表人事物
-function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSetCustom, onClose, savedAi, onSaveAi }) {
+const AI_THEMES = ['物品', '人物', '地方', '事情', '自訂'];
+function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSetCustom, onClose, savedAiFor, onSaveAi }) {
   const data = result.palaces[p];
   if (!data) return null;
   const diStems = [data.diGan, data.diGanExtra].filter(Boolean);
@@ -432,13 +433,19 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
   symbols.forEach((sym) => (sym.info.attrs || []).forEach((a) => { attrCount[a] = (attrCount[a] || 0) + 1; }));
   const attrList = Object.entries(attrCount).sort((a, b) => b[1] - a[1]);
 
-  // AI 組合解讀（呼叫 /api/interpret，key 在伺服器端）
-  const [ai, setAi] = useState({ loading: false, text: savedAi || '', error: '' });
+  // AI 組合解讀（呼叫 /api/interpret，key 在伺服器端）；主題：物品/人物/地方/事情/自訂
+  const [theme, setTheme] = useState('物品');
+  const [customTheme, setCustomTheme] = useState('');
+  const [ai, setAi] = useState({ loading: false, text: (savedAiFor && savedAiFor('物品')) || '', error: '' });
+  const pickTheme = (th) => { setTheme(th); setAi({ loading: false, text: (savedAiFor && savedAiFor(th)) || '', error: '' }); };
   const runAi = async () => {
     setAi({ loading: true, text: '', error: '' });
     try {
       const payload = {
+        task: 'qimen',
         palace: PALACE_NAME[p],
+        theme,
+        custom: theme === '自訂' ? customTheme : '',
         symbols: symbols.map((s) => ({ label: s.label, name: s.name, meaning: s.info.meaning, attrs: s.info.attrs, items: s.info.items })),
       };
       const r = await fetch('/api/interpret', {
@@ -450,7 +457,7 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
       if (!r.ok) throw new Error(data.error || `AI 解讀失敗（${r.status}）`);
       const text = (data.text || '').trim();
       setAi({ loading: false, text, error: '' });
-      if (text && onSaveAi) onSaveAi(text); // 存檔到記錄
+      if (text && onSaveAi) onSaveAi(theme, text); // 存檔到記錄（按主題）
     } catch (e) {
       setAi({ loading: false, text: '', error: String((e && e.message) || e) });
     }
@@ -514,14 +521,30 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
               ))}
             </div>
             <div className="ai-block">
-              <button type="button" className="ai-btn" onClick={runAi} disabled={ai.loading}>
-                {ai.loading ? 'AI 解讀中…' : (ai.text ? '↻ 重新解讀（已存檔）' : '✨ AI 解讀：組合推斷風水物／物品')}
+              <div className="ai-theme-row">
+                <span className="ai-theme-label">解讀主題</span>
+                <div className="ai-theme-chips">
+                  {AI_THEMES.map((th) => (
+                    <button key={th} type="button" className={`ai-theme-chip${theme === th ? ' active' : ''}`} onClick={() => pickTheme(th)}>{th}</button>
+                  ))}
+                </div>
+              </div>
+              {theme === '自訂' && (
+                <input
+                  className="ai-custom-input"
+                  value={customTheme}
+                  placeholder="輸入想問的主題，例：這人是誰／這地方在哪／適合什麼物品…"
+                  onChange={(e) => setCustomTheme(e.target.value)}
+                />
+              )}
+              <button type="button" className="ai-btn" onClick={runAi} disabled={ai.loading || (theme === '自訂' && !customTheme.trim())}>
+                {ai.loading ? 'AI 解讀中…' : (ai.text ? `↻ 重新解讀（${theme}，已存檔）` : `✨ AI 解讀：${theme === '自訂' ? (customTheme || '自訂主題') : `組合推斷${theme}`}`)}
               </button>
               {ai.error && <div className="ai-error">{ai.error}</div>}
               {ai.text && <div className="ai-result">{ai.text}</div>}
-              {ai.text && <div className="ai-saved">✓ 已自動存入「AI 解讀記錄」，重開本宮會直接顯示</div>}
+              {ai.text && <div className="ai-saved">✓ 已按「{theme}」主題存入「AI 解讀記錄」，重開本宮會直接顯示</div>}
             </div>
-            <div className="sym-combo-note">（AI 依主導屬性與各符號代表物，創意組合推斷本宮所指的人事物）</div>
+            <div className="sym-combo-note">（AI 依主導屬性與各符號代表物，按所選主題創意組合，推斷本宮所指的人／事／物／地方）</div>
           </div>
         </div>
       </div>
@@ -560,12 +583,12 @@ export default function App() {
   const [aiLib, setAiLib] = useState(loadAiLib);
   // 目前盤的識別（用日期時間）；同一盤同一宮的解讀會覆蓋更新
   const chartKey = submitted ? `${submitted.year}-${submitted.month}-${submitted.day} ${String(submitted.hour).padStart(2, '0')}:${String(submitted.minute).padStart(2, '0')}` : '';
-  const savedAiFor = (p) => { const r = aiLib.find((x) => x.key === `${chartKey}|${p}`); return r ? r.text : null; };
-  const saveAiReading = (p, text) => {
-    const key = `${chartKey}|${p}`;
+  const savedAiFor = (p, theme) => { const r = aiLib.find((x) => x.key === `${chartKey}|${p}|${theme}`); return r ? r.text : null; };
+  const saveAiReading = (p, theme, text) => {
+    const key = `${chartKey}|${p}|${theme}`;
     setAiLib((lib) => {
       const next = lib.filter((x) => x.key !== key);
-      next.unshift({ key, datetime: chartKey, palace: p, palaceName: PALACE_NAME[p], text, ts: Date.now() });
+      next.unshift({ key, datetime: chartKey, palace: p, palaceName: PALACE_NAME[p], theme, text, ts: Date.now() });
       persistAiLib(next);
       return next;
     });
@@ -938,6 +961,7 @@ export default function App() {
                 <details key={r.key} className="ai-hist-item">
                   <summary className="ai-hist-head">
                     <span className="ai-hist-palace">{r.palaceName}</span>
+                    {r.theme && <span className="ai-hist-theme">{r.theme}</span>}
                     <span className="ai-hist-date">{r.datetime}</span>
                   </summary>
                   <div className="ai-hist-body">
@@ -962,8 +986,8 @@ export default function App() {
               customLabel={customMarks[selected]}
               onSetCustom={setCustom}
               onClose={() => setSelected(null)}
-              savedAi={savedAiFor(selected)}
-              onSaveAi={(text) => saveAiReading(selected, text)}
+              savedAiFor={(theme) => savedAiFor(selected, theme)}
+              onSaveAi={(theme, text) => saveAiReading(selected, theme, text)}
             />
           )}
         </ErrorBoundary>
