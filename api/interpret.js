@@ -110,6 +110,25 @@ ${symLines}
 整體 320 字內，分點清楚。`;
 }
 
+// 玄空：換運對比
+function xkComparePrompt(d) {
+  const chartStr = (c) => c.palaces.map((p) => `${p.name}(${p.dir})山${p.shan}向${p.xiang}運${p.yun}`).join('；');
+  const typesStr = (typs) => (typs || []).map((t) => `${t.n}(${t.t})`).join('、') || '無特殊格局';
+  return `以下是同一陽宅「${d.sit}山${d.face}向」（坐${d.sitGua}、向${d.faceGua}）在兩個運的玄空飛星下卦盤，請比較分析：
+
+【換前 ${d.perA}運】格局：${typesStr(d.typesA)}
+各宮：${chartStr(d.chartA)}
+
+【換後 ${d.perB}運】格局：${typesStr(d.typesB)}
+各宮：${chartStr(d.chartB)}
+
+請以玄空風水大師角度給出換運分析，條理清楚：
+1. 格局轉變：換入${d.perB}運後整體轉旺還是轉弱（結合兩運格局與當令星），財運與人丁的消長。
+2. 關鍵宮位變化：坐山、向首在換運後的吉凶轉變，哪些宮位由吉轉凶、哪些由凶轉吉。
+3. 應對建議：換運後需要重新佈局之處（哪些方位要加強化解、哪些可催旺），以及是否宜在此運裝修動土以接新運。
+整體 380 字內，分點清楚。`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
   const apiKeyRaw = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.Qimen;
@@ -120,10 +139,13 @@ export default async function handler(req, res) {
 
   let payload = req.body;
   if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
-  const { task, theme, custom, palace, symbols, chart, find } = payload || {};
+  const { task, theme, custom, palace, symbols, chart, find, compare } = payload || {};
 
   let prompt;
-  if (task === 'qimenFind') {
+  if (task === 'xkCompare') {
+    if (!compare || !compare.chartA || !compare.chartB) { res.status(400).json({ error: '缺少換運對比資料' }); return; }
+    prompt = xkComparePrompt(compare);
+  } else if (task === 'qimenFind') {
     if (!find || !find.item || !find.querent) { res.status(400).json({ error: '缺少尋物資料' }); return; }
     prompt = qimenFindPrompt(find);
   } else if (task === 'xkOverall') {

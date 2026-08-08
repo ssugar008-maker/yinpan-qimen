@@ -114,6 +114,35 @@ export default function XuanKong() {
   };
   const AI_SCOPES = ['整體', ...GRID.map((p) => PALACE_GUA[p])];
 
+  // ── 換運對比 AI（存同一 xkAiLib，按 坐向|前運|後運 快取）──
+  const periodPayload = (chrt, typs) => ({
+    types: typs.map((t) => ({ n: t.n, t: t.t })),
+    palaces: GRID.map((p) => ({ name: PALACE_GUA[p], dir: PALACE_DIR[p], shan: chrt.sG[p], xiang: chrt.fG[p], yun: chrt.pG[p] })),
+  });
+  const cmpKey = `${sitM}${faceM}|cmp|${perA}|${perB}`;
+  const [cmpAi, setCmpAi] = useState({ loading: false, text: '', error: '' });
+  useEffect(() => { setCmpAi({ loading: false, text: xkAiLib[cmpKey] || '', error: '' }); }, [cmpKey]);
+  const runCmpAi = async () => {
+    setCmpAi({ loading: true, text: '', error: '' });
+    try {
+      const r = await fetch('/api/interpret', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task: 'xkCompare',
+          compare: {
+            sit: sitM, face: faceM, sitGua: PALACE_GUA[chartA.sitPalace], faceGua: PALACE_GUA[chartA.facePalace],
+            perA, perB, typesA, typesB, chartA: periodPayload(chartA, typesA), chartB: periodPayload(chartB, typesB),
+          },
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `AI 分析失敗（${r.status}）`);
+      const text = (data.text || '').trim();
+      setCmpAi({ loading: false, text, error: '' });
+      if (text) setXkAiLib((lib) => { const next = { ...lib, [cmpKey]: text }; try { localStorage.setItem(XK_AI_KEY, JSON.stringify(next)); } catch {} return next; });
+    } catch (e) { setCmpAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
+  };
+
   // 星曜組合（九宮格用）
   const combos = GRID.map((p) => ({ p, combo: starPair(chart.sG[p], chart.fG[p]) }));
   const badCombos = combos.filter((c) => c.combo.r);
@@ -272,6 +301,14 @@ export default function XuanKong() {
             </div>
           </div>
           <CompareAnalysis chartA={chartA} chartB={chartB} typesA={typesA} typesB={typesB} perA={perA} perB={perB} />
+          <div className="ai-block" style={{ marginTop: 10 }}>
+            <button type="button" className="ai-btn" onClick={runCmpAi} disabled={cmpAi.loading}>
+              {cmpAi.loading ? 'AI 分析中…' : (cmpAi.text ? `↻ 重新分析（${perA}→${perB}運，已存檔）` : `✨ AI 換運分析（${perA}運 → ${perB}運）`)}
+            </button>
+            {cmpAi.error && <div className="ai-error">{cmpAi.error}</div>}
+            {cmpAi.text && <div className="ai-result">{cmpAi.text}</div>}
+            {cmpAi.text && <div className="ai-saved">✓ 已存檔（本坐向＋{perA}→{perB}運），重整頁面亦保留</div>}
+          </div>
         </div>
       </div>
 
