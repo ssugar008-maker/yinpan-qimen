@@ -135,11 +135,15 @@ export default async function handler(req, res) {
   const apiKey = apiKeyRaw ? String(apiKeyRaw).trim() : '';
   if (!apiKey) { res.status(503).json({ error: '尚未設定 API key（請於 Vercel 環境變數加入 AI_API_KEY 後重新部署）' }); return; }
   const base = (process.env.AI_API_BASE || 'https://api.deepseek.com').replace(/\/$/, '');
-  const model = process.env.AI_MODEL || 'deepseek-v4-flash';
 
   let payload = req.body;
   if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
   const { task, theme, custom, palace, symbols, chart, find, compare } = payload || {};
+
+  // 模型選擇：前端可選 flash（快速）/ pro（深度），白名單驗證，預設 flash
+  const ALLOWED_MODELS = new Set(['deepseek-v4-flash', 'deepseek-v4-pro']);
+  const reqModel = payload && payload.model;
+  const model = (reqModel && ALLOWED_MODELS.has(reqModel)) ? reqModel : (process.env.AI_MODEL || 'deepseek-v4-flash');
 
   let prompt;
   if (task === 'xkCompare') {

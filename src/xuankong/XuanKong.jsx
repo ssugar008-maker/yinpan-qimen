@@ -5,6 +5,8 @@ import {
   annualStar, annualChart, lifeGua, bazhai, GUA_NAME, EAST4,
   mountainFromDegree, mountainCenter, degreeOffset,
 } from './engine.js';
+import { useCloudStore } from '../cloud.js';
+import { aiInterpret } from '../ai.js';
 
 const jiColor = (ji) => (ji === '吉' ? '#16a34a' : ji === '大凶' ? '#dc2626' : ji === '凶' ? '#d97706' : '#6b7280');
 const pairColor = (t) => (t === '吉' ? '#16a34a' : t === '大凶' ? '#dc2626' : t === '凶' || t === '半凶' ? '#d97706' : t === '半吉' ? '#65a30d' : '#6b7280');
@@ -81,10 +83,9 @@ export default function XuanKong() {
   const degNum = parseFloat(degree);
   const jianXiang = !isNaN(degNum) && Math.abs(degreeOffset(degNum)) >= 4.5;
 
-  // ── AI 風水分析（整體 / 各宮）──
+  // ── AI 風水分析（整體 / 各宮）── 雲端同步（Vercel KV）＋ localStorage 快取
   const XK_AI_KEY = 'xuankong_ai_v1';
-  const loadXkAi = () => { try { const v = JSON.parse(localStorage.getItem(XK_AI_KEY)); return v && typeof v === 'object' ? v : {}; } catch { return {}; } };
-  const [xkAiLib, setXkAiLib] = useState(loadXkAi);
+  const [xkAiLib, setXkAiLib] = useCloudStore('xuankong', XK_AI_KEY, {});
   const [aiScope, setAiScope] = useState('整體');
   const chartPayload = useMemo(() => ({
     sit: sitM, face: faceM, period, flowYear, flowStar,
@@ -101,15 +102,9 @@ export default function XuanKong() {
     setXkAi({ loading: true, text: '', error: '' });
     try {
       const isOverall = aiScope === '整體';
-      const r = await fetch('/api/interpret', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: isOverall ? 'xkOverall' : 'xkPalace', chart: chartPayload, palace: isOverall ? undefined : aiScope }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || `AI 分析失敗（${r.status}）`);
-      const text = (data.text || '').trim();
+      const text = await aiInterpret({ task: isOverall ? 'xkOverall' : 'xkPalace', chart: chartPayload, palace: isOverall ? undefined : aiScope });
       setXkAi({ loading: false, text, error: '' });
-      if (text) setXkAiLib((lib) => { const next = { ...lib, [aiKey]: text }; try { localStorage.setItem(XK_AI_KEY, JSON.stringify(next)); } catch {} return next; });
+      if (text) setXkAiLib((lib) => ({ ...lib, [aiKey]: text }));
     } catch (e) { setXkAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
   };
   const AI_SCOPES = ['整體', ...GRID.map((p) => PALACE_GUA[p])];
@@ -125,21 +120,15 @@ export default function XuanKong() {
   const runCmpAi = async () => {
     setCmpAi({ loading: true, text: '', error: '' });
     try {
-      const r = await fetch('/api/interpret', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          task: 'xkCompare',
-          compare: {
-            sit: sitM, face: faceM, sitGua: PALACE_GUA[chartA.sitPalace], faceGua: PALACE_GUA[chartA.facePalace],
-            perA, perB, typesA, typesB, chartA: periodPayload(chartA, typesA), chartB: periodPayload(chartB, typesB),
-          },
-        }),
+      const text = await aiInterpret({
+        task: 'xkCompare',
+        compare: {
+          sit: sitM, face: faceM, sitGua: PALACE_GUA[chartA.sitPalace], faceGua: PALACE_GUA[chartA.facePalace],
+          perA, perB, typesA, typesB, chartA: periodPayload(chartA, typesA), chartB: periodPayload(chartB, typesB),
+        },
       });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || `AI 分析失敗（${r.status}）`);
-      const text = (data.text || '').trim();
       setCmpAi({ loading: false, text, error: '' });
-      if (text) setXkAiLib((lib) => { const next = { ...lib, [cmpKey]: text }; try { localStorage.setItem(XK_AI_KEY, JSON.stringify(next)); } catch {} return next; });
+      if (text) setXkAiLib((lib) => ({ ...lib, [cmpKey]: text }));
     } catch (e) { setCmpAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
   };
 

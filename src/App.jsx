@@ -3,6 +3,8 @@ import { Solar } from 'lunar-javascript';
 import { paipan } from './qimen/engine.js';
 import XuanKong from './xuankong/XuanKong.jsx';
 import { DOOR_INFO, STAR_INFO, GOD_INFO, STEM_INFO, PALACE_INFO, WUXING_SHENG, WUXING_KE } from './qimen/symbols.js';
+import { useCloudStore } from './cloud.js';
+import { aiInterpret, AI_MODELS, getAiModelId, setAiModelId } from './ai.js';
 
 // ---- 简体→繁体（本盘用到的字） ----
 const S2T = {
@@ -79,14 +81,8 @@ function computeShiZhu(result, querent) {
   return null;
 }
 
-// AI 解讀記錄（localStorage）：以「日期時間|宮位」為 key 存檔，重開宮位可直接顯示上次結果
+// AI 解讀記錄：以「日期時間|宮位|主題」為 key 存檔（雲端同步＋本機快取）
 const AI_LIB_KEY = 'qimen_ai_library_v1';
-function loadAiLib() {
-  try { const v = JSON.parse(localStorage.getItem(AI_LIB_KEY)); return Array.isArray(v) ? v : []; } catch { return []; }
-}
-function persistAiLib(lib) {
-  try { localStorage.setItem(AI_LIB_KEY, JSON.stringify(lib.slice(0, 200))); } catch { /* 容量滿則略過 */ }
-}
 
 // 兩五行的生克關係：回傳 { from, to, type:'生'|'克' }；相同五行（比和）回傳 null
 function wxRelation(wxA, wxB) {
@@ -445,21 +441,13 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
   const runAi = async () => {
     setAi({ loading: true, text: '', error: '' });
     try {
-      const payload = {
+      const text = await aiInterpret({
         task: 'qimen',
         palace: PALACE_NAME[p],
         theme,
         custom: theme === '自訂' ? customTheme : '',
         symbols: symbols.map((s) => ({ label: s.label, name: s.name, meaning: s.info.meaning, attrs: s.info.attrs, items: s.info.items })),
-      };
-      const r = await fetch('/api/interpret', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
       });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || `AI 解讀失敗（${r.status}）`);
-      const text = (data.text || '').trim();
       setAi({ loading: false, text, error: '' });
       if (text && onSaveAi) onSaveAi(theme, text); // 存檔到記錄（按主題）
     } catch (e) {
@@ -561,10 +549,9 @@ const FIND_KEY = 'qimen_find_v1';
 function FindItemPanel({ result, chartKey }) {
   const itemP = result.pillarMarkPalaces[3];   // 時干宮（物品）
   const querentP = result.pillarMarkPalaces[2]; // 日干宮（事主）
+  const [findLib, setFindLib] = useCloudStore('qimen_find', FIND_KEY, {});
   const [ai, setAi] = useState({ loading: false, text: '', error: '' });
-  useEffect(() => {
-    try { const v = JSON.parse(localStorage.getItem(FIND_KEY)) || {}; setAi({ loading: false, text: v[chartKey] || '', error: '' }); } catch { setAi({ loading: false, text: '', error: '' }); }
-  }, [chartKey]);
+  useEffect(() => { setAi((a) => (a.loading ? a : { loading: false, text: findLib[chartKey] || '', error: '' })); }, [chartKey, findLib]);
 
   const info = useMemo(() => {
     if (!itemP || !querentP) return null;
@@ -599,7 +586,7 @@ function FindItemPanel({ result, chartKey }) {
   const runAi = async () => {
     setAi({ loading: true, text: '', error: '' });
     try {
-      const payload = {
+      const text = await aiInterpret({
         task: 'qimenFind',
         find: {
           hourGan: t(result.pillarStems[3]), dayGan: t(result.pillarStems[2]),
@@ -607,13 +594,9 @@ function FindItemPanel({ result, chartKey }) {
           querent: { palace: PALACE_NAME[querentP], wx: info.qWx },
           relation: info.relation, ease: info.ease, speed: info.speed, distance: info.distance,
         },
-      };
-      const r = await fetch('/api/interpret', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || `AI 分析失敗（${r.status}）`);
-      const text = (data.text || '').trim();
+      });
       setAi({ loading: false, text, error: '' });
-      if (text) { try { const v = JSON.parse(localStorage.getItem(FIND_KEY)) || {}; v[chartKey] = text; localStorage.setItem(FIND_KEY, JSON.stringify(v)); } catch { } }
+      if (text) setFindLib((lib) => ({ ...lib, [chartKey]: text }));
     } catch (e) { setAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
   };
 
@@ -637,6 +620,20 @@ function FindItemPanel({ result, chartKey }) {
         {ai.text && <div className="ai-saved">✓ 已存檔（本盤），重整頁面亦保留</div>}
       </div>
     </details>
+  );
+}
+
+// AI 模型切換（快速 flash / 深度 pro），存 localStorage，各 AI 呼叫即時讀取
+function ModelToggle() {
+  const [m, setM] = useState(getAiModelId);
+  const pick = (id) => { setAiModelId(id); setM(id); };
+  return (
+    <div className="model-toggle" title="AI 模型：快速＝Flash（快而省）；深度＝Pro（更強更準，費用較高）">
+      <span className="model-toggle-label">AI 模型</span>
+      {AI_MODELS.map((x) => (
+        <button key={x.id} type="button" className={`model-opt${m === x.id ? ' active' : ''}`} onClick={() => pick(x.id)} title={x.id}>{x.label}</button>
+      ))}
+    </div>
   );
 }
 
@@ -667,8 +664,8 @@ export default function App() {
     if (text && text.trim()) next[p] = text.trim(); else delete next[p];
     return next;
   });
-  // AI 解讀記錄（library）：localStorage 持久化，重開宮位/重整頁面都保留
-  const [aiLib, setAiLib] = useState(loadAiLib);
+  // AI 解讀記錄（library）：雲端同步（Vercel KV）＋ localStorage 快取，跨裝置保留
+  const [aiLib, setAiLib, aiLibCloud] = useCloudStore('qimen_palace', AI_LIB_KEY, []);
   // 目前盤的識別（用日期時間）；同一盤同一宮的解讀會覆蓋更新
   const chartKey = submitted ? `${submitted.year}-${submitted.month}-${submitted.day} ${String(submitted.hour).padStart(2, '0')}:${String(submitted.minute).padStart(2, '0')}` : '';
   const savedAiFor = (p, theme) => { const r = aiLib.find((x) => x.key === `${chartKey}|${p}|${theme}`); return r ? r.text : null; };
@@ -677,12 +674,11 @@ export default function App() {
     setAiLib((lib) => {
       const next = lib.filter((x) => x.key !== key);
       next.unshift({ key, datetime: chartKey, palace: p, palaceName: PALACE_NAME[p], theme, text, ts: Date.now() });
-      persistAiLib(next);
-      return next;
+      return next.slice(0, 200);
     });
   };
-  const deleteAiReading = (key) => setAiLib((lib) => { const next = lib.filter((x) => x.key !== key); persistAiLib(next); return next; });
-  const clearAiLib = () => { persistAiLib([]); setAiLib([]); };
+  const deleteAiReading = (key) => setAiLib((lib) => lib.filter((x) => x.key !== key));
+  const clearAiLib = () => setAiLib([]);
   // 分頁：排盤 / 月份時間 / 九宮飛星
   const [tab, setTab] = useState('chart');
   // 五行生克外圈顯示開關
@@ -867,6 +863,7 @@ export default function App() {
     <div className="page">
       <h1 className="title">MO易學</h1>
       <div className="subtitle">陰盤奇門 · 九宮飛星 · 玄空飛星</div>
+      <ModelToggle />
 
       <div className="tabs">
         <button type="button" className={`tab${tab === 'chart' ? ' active' : ''}`} onClick={() => setTab('chart')}>陰盤奇門</button>
@@ -1042,7 +1039,7 @@ export default function App() {
           <FindItemPanel result={result} chartKey={chartKey} />
 
           <details className="panel collapsible ai-hist-panel">
-            <summary className="panel-head">AI 解讀記錄{aiLib.length ? `（${aiLib.length}）` : ''}</summary>
+            <summary className="panel-head">AI 解讀記錄{aiLib.length ? `（${aiLib.length}）` : ''}<span className={`cloud-dot ${aiLibCloud ? 'on' : 'off'}`}>{aiLibCloud ? '雲端同步' : '本機'}</span></summary>
             <div className="panel-body">
               {aiLib.length === 0 && (
                 <div className="ai-hist-empty">暫無記錄。點入宮位 → 按「AI 解讀」後會自動存檔；重開同一宮會直接顯示上次結果，重整頁面亦保留。</div>

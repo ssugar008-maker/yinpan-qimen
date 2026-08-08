@@ -449,6 +449,17 @@ body {
   border-radius: 8px; margin-bottom: 8px; font-family: inherit; box-sizing: border-box;
 }
 .ai-hist-theme { font-size: 10px; font-weight: 700; color: #fff; background: #9a86c0; padding: 1px 7px; border-radius: 9px; margin-left: 6px; }
+/* AI 模型切換 */
+.model-toggle { display: flex; align-items: center; justify-content: center; gap: 4px; margin: 6px 0 2px; }
+.model-toggle-label { font-size: 11px; color: #6a5f4f; font-weight: 600; margin-right: 2px; }
+.model-opt {
+  font-size: 12px; padding: 3px 12px; border-radius: 13px; border: 1px solid var(--line);
+  background: #fff; color: #6a5f4f; cursor: pointer; font-family: inherit;
+}
+.model-opt.active { background: #7a5c2e; border-color: #7a5c2e; color: #fff; font-weight: 700; }
+.cloud-dot { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 9px; margin-left: 6px; }
+.cloud-dot.on { background: #e6f4ea; color: #2e7d32; }
+.cloud-dot.off { background: #f3e8d8; color: #a08050; }
 /* 自動尋物 */
 .find-grid { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
 .find-row { display: flex; gap: 8px; font-size: 13px; align-items: baseline; }
