@@ -1,6 +1,6 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
-  GRID, PALACE_DIR, PALACE_GUA, STAR_JI, PERIODS, MOUNTAINS24,
+  GRID, PALACE_DIR, PALACE_GUA, PALACE_WX, STAR_JI, STAR_NAME, STAR_WX, PERIODS, MOUNTAINS24,
   oppositeMountain, xuanKongChart, chartTypes, castleGate, starPair, remedyText,
   annualStar, annualChart, lifeGua, bazhai, GUA_NAME, EAST4,
   mountainFromDegree, mountainCenter, degreeOffset,
@@ -8,18 +8,22 @@ import {
 import { useCloudStore } from '../cloud.js';
 import { aiInterpret } from '../ai.js';
 
+// AI 分析主題（與 api/interpret.js 的 XK_THEMES 對應；「綜合」＝原有整體解讀，「自訂」＝自由提問）
+const XK_AI_THEMES = ['綜合', '傢俬擺設', '顏色', '形狀材質', '風水擺設', '房間用途', '財運', '健康', '感情桃花', '事業文昌', '化解催旺', '自訂'];
+
 const jiColor = (ji) => (ji === '吉' ? '#16a34a' : ji === '大凶' ? '#dc2626' : ji === '凶' ? '#d97706' : '#6b7280');
 const pairColor = (t) => (t === '吉' ? '#16a34a' : t === '大凶' ? '#dc2626' : t === '凶' || t === '半凶' ? '#d97706' : t === '半吉' ? '#65a30d' : '#6b7280');
 
-// 可重用九宮玄空盤
-function XkGrid({ chart, flow = null, compact = false }) {
+// 可重用九宮玄空盤（傳 onPick 則各宮可點選，用於指定 AI 分析範圍）
+function XkGrid({ chart, flow = null, compact = false, onPick = null, picked = null }) {
   return (
     <div className={`xk-grid${compact ? ' compact' : ''}`}>
       {GRID.map((p) => {
         const isSit = p === chart.sitPalace, isFace = p === chart.facePalace;
         const combo = starPair(chart.sG[p], chart.fG[p]);
+        const pick = onPick ? { role: 'button', tabIndex: 0, onClick: () => onPick(PALACE_GUA[p]), onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(PALACE_GUA[p]); } }, title: `AI 分析 ${PALACE_GUA[p]}宮` } : {};
         return (
-          <div key={p} className={`xk-cell${p === 5 ? ' center' : ''}${isSit ? ' sit' : ''}${isFace ? ' face' : ''}`}>
+          <div key={p} {...pick} className={`xk-cell${p === 5 ? ' center' : ''}${isSit ? ' sit' : ''}${isFace ? ' face' : ''}${onPick ? ' pickable' : ''}${picked === PALACE_GUA[p] ? ' picked' : ''}`}>
             <div className="xk-stars">
               <span className="xk-s" style={{ color: jiColor(STAR_JI[chart.sG[p]]) }}>{chart.sG[p]}</span>
               <span className="xk-f" style={{ color: jiColor(STAR_JI[chart.fG[p]]) }}>{chart.fG[p]}</span>
@@ -83,31 +87,78 @@ export default function XuanKong() {
   const degNum = parseFloat(degree);
   const jianXiang = !isNaN(degNum) && Math.abs(degreeOffset(degNum)) >= 4.5;
 
-  // ── AI 風水分析（整體 / 各宮）── 雲端同步（Vercel KV）＋ localStorage 快取
+  // ── AI 風水分析（整體 / 各宮 × 主題）── 雲端同步（Vercel KV）＋ localStorage 快取
   const XK_AI_KEY = 'xuankong_ai_v1';
   const [xkAiLib, setXkAiLib] = useCloudStore('xuankong', XK_AI_KEY, {});
   const [aiScope, setAiScope] = useState('整體');
+  const [aiTheme, setAiTheme] = useState('綜合');
+  const [aiCustom, setAiCustom] = useState('');
+  const [aiContext, setAiContext] = useState('');
+  const aiPanelRef = useRef(null);
   const chartPayload = useMemo(() => ({
     sit: sitM, face: faceM, period, flowYear, flowStar,
     types: types.map((t) => ({ n: t.n, t: t.t })),
     palaces: GRID.map((p) => {
       const c = starPair(chart.sG[p], chart.fG[p]);
-      return { name: PALACE_GUA[p], dir: PALACE_DIR[p], shan: chart.sG[p], xiang: chart.fG[p], yun: chart.pG[p], flow: flow[p], combo: c.n, ji: c.t };
+      const s = chart.sG[p], f = chart.fG[p];
+      return {
+        name: PALACE_GUA[p], dir: PALACE_DIR[p], wx: PALACE_WX[p],
+        role: p === chart.sitPalace ? '坐山' : p === chart.facePalace ? '向首' : p === 5 ? '中宮' : '',
+        shan: s, shanName: STAR_NAME[s], shanWx: STAR_WX[s],
+        xiang: f, xiangName: STAR_NAME[f], xiangWx: STAR_WX[f],
+        yun: chart.pG[p], yunName: STAR_NAME[chart.pG[p]],
+        flow: flow[p], flowName: STAR_NAME[flow[p]],
+        combo: c.n, ji: c.t, comboDesc: c.d, remedy: remedyText(c.r),
+      };
     }),
   }), [sitM, faceM, period, flowYear, flowStar, types, chart, flow]);
-  const aiKey = `${sitM}${faceM}|${period}|${flowYear}|${aiScope}`;
+
+  // 存檔 key 含範圍＋主題＋自訂問題＋情境，問法不同各自存一份
+  const chartKey = `${sitM}${faceM}|${period}|${flowYear}`;
+  const customQ = aiCustom.trim(), ctxQ = aiContext.trim();
+  const aiKey = `${chartKey}|${aiScope}|${aiTheme}|${aiTheme === '自訂' ? customQ : ''}|${ctxQ}`;
+  const libEntry = (v) => (typeof v === 'string' ? { text: v } : (v || null));
   const [xkAi, setXkAi] = useState({ loading: false, text: '', error: '' });
-  useEffect(() => { setXkAi({ loading: false, text: xkAiLib[aiKey] || '', error: '' }); }, [aiKey]);
+  useEffect(() => {
+    const hit = libEntry(xkAiLib[aiKey]);
+    // 舊版存檔只有 坐向|運|流年|範圍（等同「綜合」且無補充），沿用避免使用者記錄消失
+    const legacy = aiTheme === '綜合' && !ctxQ ? libEntry(xkAiLib[`${chartKey}|${aiScope}`]) : null;
+    setXkAi({ loading: false, text: (hit && hit.text) || (legacy && legacy.text) || '', error: '' });
+  }, [aiKey]);
   const runXkAi = async () => {
     setXkAi({ loading: true, text: '', error: '' });
     try {
       const isOverall = aiScope === '整體';
-      const text = await aiInterpret({ task: isOverall ? 'xkOverall' : 'xkPalace', chart: chartPayload, palace: isOverall ? undefined : aiScope });
+      const text = await aiInterpret({
+        task: isOverall ? 'xkOverall' : 'xkPalace',
+        chart: chartPayload,
+        palace: isOverall ? undefined : aiScope,
+        theme: aiTheme,
+        custom: aiTheme === '自訂' ? customQ : '',
+        context: ctxQ,
+      });
       setXkAi({ loading: false, text, error: '' });
-      if (text) setXkAiLib((lib) => ({ ...lib, [aiKey]: text }));
+      if (text) setXkAiLib((lib) => ({ ...lib, [aiKey]: { text, scope: aiScope, theme: aiTheme, custom: aiTheme === '自訂' ? customQ : '', context: ctxQ, ts: Date.now() } }));
     } catch (e) { setXkAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
   };
   const AI_SCOPES = ['整體', ...GRID.map((p) => PALACE_GUA[p])];
+  const pickAiPalace = (name) => {
+    setAiScope(name);
+    if (aiPanelRef.current) aiPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  // 本盤已存的分析（可點回看，不需重新呼叫 AI）
+  const savedList = useMemo(() => Object.entries(xkAiLib)
+    .filter(([k]) => k.startsWith(`${chartKey}|`))
+    .map(([k, v]) => { const e = libEntry(v); const f = k.split('|'); return e && e.text ? { k, text: e.text, scope: e.scope || f[3] || '整體', theme: e.theme || f[4] || '綜合', custom: e.custom || f[5] || '', context: e.context || f[6] || '', ts: e.ts || 0 } : null; })
+    .filter(Boolean)
+    .sort((a, b) => b.ts - a.ts), [xkAiLib, chartKey]);
+  const restoreSaved = (s) => {
+    setAiScope(s.scope); setAiTheme(s.theme);
+    setAiCustom(s.theme === '自訂' ? s.custom : ''); setAiContext(s.context);
+    setXkAi({ loading: false, text: s.text, error: '' });
+  };
+  // AI 面板所選宮位的盤面事實（讓使用者清楚問的是哪一宮）
+  const scopeFacts = aiScope === '整體' ? null : chartPayload.palaces.find((x) => x.name === aiScope);
 
   // ── 換運對比 AI（存同一 xkAiLib，按 坐向|前運|後運 快取）──
   const periodPayload = (chrt, typs) => ({
@@ -116,7 +167,7 @@ export default function XuanKong() {
   });
   const cmpKey = `${sitM}${faceM}|cmp|${perA}|${perB}`;
   const [cmpAi, setCmpAi] = useState({ loading: false, text: '', error: '' });
-  useEffect(() => { setCmpAi({ loading: false, text: xkAiLib[cmpKey] || '', error: '' }); }, [cmpKey]);
+  useEffect(() => { setCmpAi({ loading: false, text: (libEntry(xkAiLib[cmpKey]) || {}).text || '', error: '' }); }, [cmpKey]);
   const runCmpAi = async () => {
     setCmpAi({ loading: true, text: '', error: '' });
     try {
@@ -176,10 +227,11 @@ export default function XuanKong() {
           </div>
           {jianXiang && <div className="xk-jx">⚠ 度數 {degree}° 接近兩山交界（兼向），下卦排盤或需改用替卦起星。</div>}
 
-          <XkGrid chart={chart} flow={flow} />
+          <XkGrid chart={chart} flow={flow} onPick={pickAiPalace} picked={aiScope} />
           <div className="xk-legend">
             <span><b style={{ color: '#8b5a2b' }}>左</b>山星　<b style={{ color: '#8b5a2b' }}>右</b>向星　下：運星/流年星</span>
             <span>綠=吉　橙=凶　紅=大凶　右下點=凶組合</span>
+            <span className="xk-legend-tip">點任一宮 → 跳到 AI 分析並鎖定該宮</span>
           </div>
 
           {/* 格局 */}
@@ -207,25 +259,70 @@ export default function XuanKong() {
         </div>
       </div>
 
-      {/* AI 風水分析 */}
-      <div className="panel">
-        <div className="panel-head">AI 風水分析（整體／各宮）</div>
+      {/* AI 風水分析：範圍（整體／任一宮）× 主題（傢俬、顏色、形狀材質…／自訂問題） */}
+      <div className="panel" ref={aiPanelRef}>
+        <div className="panel-head">AI 風水分析（任一宮位 × 任何主題）</div>
         <div className="panel-body">
           <div className="ai-theme-row">
             <span className="ai-theme-label">分析範圍</span>
             <div className="ai-theme-chips">
               {AI_SCOPES.map((s) => (
-                <button key={s} type="button" className={`ai-theme-chip${aiScope === s ? ' active' : ''}`} onClick={() => setAiScope(s)}>{s}</button>
+                <button key={s} type="button" className={`ai-theme-chip${aiScope === s ? ' active' : ''}`} onClick={() => setAiScope(s)}>
+                  {s === '整體' ? '整體' : s === '中' ? '中宮' : `${s}·${PALACE_DIR[GRID.find((p) => PALACE_GUA[p] === s)]}`}
+                </button>
               ))}
             </div>
           </div>
-          <button type="button" className="ai-btn" onClick={runXkAi} disabled={xkAi.loading}>
-            {xkAi.loading ? 'AI 分析中…' : (xkAi.text ? `↻ 重新分析（${aiScope}，已存檔）` : `✨ AI 分析：${aiScope === '整體' ? '整體格局＋化解' : `${aiScope}宮組合＋化解`}`)}
+          {scopeFacts && (
+            <div className="xk-ai-facts">
+              <b>{scopeFacts.name}宮（{scopeFacts.dir}）</b>
+              {scopeFacts.role ? <span className="xk-ai-role">{scopeFacts.role}</span> : null}
+              　山星{scopeFacts.shan}（{scopeFacts.shanWx}）　向星{scopeFacts.xiang}（{scopeFacts.xiangWx}）　運星{scopeFacts.yun}　流年{scopeFacts.flow}
+              　<span style={{ color: pairColor(scopeFacts.ji) }}>{scopeFacts.combo}（{scopeFacts.ji}）</span>
+            </div>
+          )}
+          <div className="ai-theme-row">
+            <span className="ai-theme-label">分析主題</span>
+            <div className="ai-theme-chips">
+              {XK_AI_THEMES.map((th) => (
+                <button key={th} type="button" className={`ai-theme-chip${aiTheme === th ? ' active' : ''}`} onClick={() => setAiTheme(th)}>{th}</button>
+              ))}
+            </div>
+          </div>
+          {aiTheme === '自訂' && (
+            <input
+              className="ai-custom-input"
+              value={aiCustom}
+              placeholder={`想問什麼都可以，例：${aiScope === '整體' ? '全屋哪個方位最適合做嬰兒房' : `${aiScope}宮這組合可以放什麼傢俬／用什麼顏色／擺魚缸好唔好`}`}
+              onChange={(e) => setAiCustom(e.target.value)}
+            />
+          )}
+          <input
+            className="ai-custom-input"
+            value={aiContext}
+            placeholder="情境補充（可留空）：例 此處為主人房、已放咗大鏡、想催財、家中有小朋友…"
+            onChange={(e) => setAiContext(e.target.value)}
+          />
+          <button type="button" className="ai-btn" onClick={runXkAi} disabled={xkAi.loading || (aiTheme === '自訂' && !customQ)}>
+            {xkAi.loading ? 'AI 分析中…'
+              : `${xkAi.text ? '↻ 重新分析' : '✨ AI 分析'}：${aiScope === '整體' ? '整體' : `${aiScope}宮`}・${aiTheme === '自訂' ? (customQ || '自訂問題') : aiTheme}${xkAi.text ? '（已存檔）' : ''}`}
           </button>
           {xkAi.error && <div className="ai-error">{xkAi.error}</div>}
           {xkAi.text && <div className="ai-result">{xkAi.text}</div>}
-          {xkAi.text && <div className="ai-saved">✓ 已存檔（本坐向／運／流年／範圍），重整頁面亦保留</div>}
-          <div className="sym-combo-note">（AI 以玄空大師角度，結合格局、山向星、五行生剋與流年，給出吉凶判斷與化解催旺方案）</div>
+          {xkAi.text && <div className="ai-saved">✓ 已按「{aiScope === '整體' ? '整體' : `${aiScope}宮`}・{aiTheme}」存檔（本坐向／運／流年），重整頁面亦保留</div>}
+          {savedList.length > 0 && (
+            <div className="xk-ai-hist">
+              <div className="xk-sec-head">本盤已存分析（點擊回看）</div>
+              {savedList.map((s) => (
+                <button key={s.k} type="button" className={`xk-ai-hist-row${s.k === aiKey ? ' on' : ''}`} onClick={() => restoreSaved(s)}>
+                  <span className="xk-ai-hist-scope">{s.scope === '整體' ? '整體' : `${s.scope}宮`}</span>
+                  <span className="xk-ai-hist-theme">{s.theme === '自訂' ? (s.custom || '自訂') : s.theme}</span>
+                  <span className="xk-ai-hist-text">{s.text.slice(0, 40)}…</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="sym-combo-note">（可先點上方九宮格任一宮，再選主題；主題涵蓋傢俬擺設、顏色、形狀材質、風水擺設、房間用途、財運、健康、感情桃花、事業文昌、化解催旺，或用「自訂」直接問。AI 會結合格局、山向星、五行生剋與流年作答）</div>
         </div>
       </div>
 
@@ -235,7 +332,15 @@ export default function XuanKong() {
         <div className="panel-body">
           <div className="xk-grid combo-grid">
             {combos.map(({ p, combo }) => (
-              <div key={p} className={`xk-cell combo-cell${p === 5 ? ' center' : ''}`}>
+              <div
+                key={p}
+                role="button"
+                tabIndex={0}
+                title={`AI 分析 ${PALACE_GUA[p]}宮`}
+                onClick={() => pickAiPalace(PALACE_GUA[p])}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickAiPalace(PALACE_GUA[p]); } }}
+                className={`xk-cell combo-cell pickable${p === 5 ? ' center' : ''}${aiScope === PALACE_GUA[p] ? ' picked' : ''}`}
+              >
                 <div className="xk-pal top">{PALACE_GUA[p]}{p === 5 ? '' : `·${PALACE_DIR[p]}`}{p === chart.sitPalace ? '（坐）' : p === chart.facePalace ? '（向）' : ''}</div>
                 <div className="xk-combo-stars2">山{chart.sG[p]} 向{chart.fG[p]} 流{flow[p]}</div>
                 <div className="xk-combo-name" style={{ color: pairColor(combo.t) }}>{combo.n}</div>
@@ -249,6 +354,7 @@ export default function XuanKong() {
               {badCombos.map(({ p, combo }) => (
                 <div key={p} className="xk-cure-row">
                   <b>{PALACE_GUA[p]}宮（{PALACE_DIR[p]}）</b>　<span style={{ color: pairColor(combo.t) }}>{combo.n}</span>　— {combo.d}　<span className="xk-cure">化解：{remedyText(combo.r)}</span>
+                  <button type="button" className="xk-ask-btn" onClick={() => { setAiTheme('化解催旺'); pickAiPalace(PALACE_GUA[p]); }}>問 AI 化解</button>
                 </div>
               ))}
             </div>

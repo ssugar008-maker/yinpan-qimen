@@ -890,6 +890,34 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .xk-ana-row { font-size: 13px; color: #4a4238; padding: 3px 0; line-height: 1.6; }
 .xk-ana-row.verdict { font-weight: 700; color: var(--accent); margin-top: 4px; }
 
+/* 玄空：AI 分析（可點宮位 × 主題） */
+.xk-cell.pickable { cursor: pointer; }
+.xk-cell.pickable:hover { background: #fdfaf3; border-color: #c9b6e4; }
+.xk-cell.center.pickable:hover { background: #f1e9da; }
+.xk-cell.picked { border-color: #6b3fa0; box-shadow: 0 0 0 2px #d9c9f2; }
+.xk-legend-tip { color: #9a86c0; }
+.xk-ai-facts {
+  font-size: 12px; color: #4a4238; line-height: 1.7; margin-bottom: 8px;
+  padding: 6px 10px; background: #faf7f1; border: 1px solid #eee5d5; border-radius: 8px;
+}
+.xk-ai-role { font-size: 10px; font-weight: 700; color: #fff; background: #8b5a2b; padding: 1px 7px; border-radius: 9px; margin-left: 6px; }
+.xk-ask-btn {
+  margin-left: 8px; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 12px;
+  border: 1px solid #c9b6e4; background: #f7f3fc; color: #6b3fa0; cursor: pointer; font-family: inherit;
+}
+.xk-ask-btn:hover { background: #efe6fa; }
+.xk-ai-hist { margin-top: 12px; border-top: 1px dashed #e0d6c2; padding-top: 10px; }
+.xk-ai-hist-row {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; margin-bottom: 4px;
+  padding: 5px 9px; font-size: 12px; font-family: inherit; cursor: pointer;
+  background: #fff; border: 1px solid #eee5d5; border-radius: 6px;
+}
+.xk-ai-hist-row:hover { border-color: #c9b6e4; background: #faf7fd; }
+.xk-ai-hist-row.on { border-color: #6b3fa0; background: #f7f3fc; }
+.xk-ai-hist-scope { font-weight: 700; color: #8b5a2b; flex: none; }
+.xk-ai-hist-theme { font-size: 10px; font-weight: 700; color: #fff; background: #9a86c0; padding: 1px 7px; border-radius: 9px; flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xk-ai-hist-text { color: #8a8073; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* 玄空：八宅命卦九宮格 */
 .bazhai-grid .xk-cell { min-height: 74px; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
 .bazhai-cell.good { background: #eaf4ea; border-color: #b7d8b7; }
