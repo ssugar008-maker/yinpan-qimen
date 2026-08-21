@@ -123,8 +123,9 @@ export default function XuanKong() {
     const hit = libEntry(xkAiLib[aiKey]);
     // 舊版存檔只有 坐向|運|流年|範圍（等同「綜合」且無補充），沿用避免使用者記錄消失
     const legacy = aiTheme === '綜合' && !ctxQ ? libEntry(xkAiLib[`${chartKey}|${aiScope}`]) : null;
-    setXkAi({ loading: false, text: (hit && hit.text) || (legacy && legacy.text) || '', error: '' });
-  }, [aiKey]);
+    const text = (hit && hit.text) || (legacy && legacy.text) || '';
+    setXkAi((prev) => (prev.loading ? prev : { loading: false, text, error: '' })); // 分析中不被雲端同步打斷
+  }, [aiKey, xkAiLib]);
   const runXkAi = async () => {
     setXkAi({ loading: true, text: '', error: '' });
     try {
@@ -277,8 +278,11 @@ export default function XuanKong() {
             <div className="xk-ai-facts">
               <b>{scopeFacts.name}宮（{scopeFacts.dir}）</b>
               {scopeFacts.role ? <span className="xk-ai-role">{scopeFacts.role}</span> : null}
-              　山星{scopeFacts.shan}（{scopeFacts.shanWx}）　向星{scopeFacts.xiang}（{scopeFacts.xiangWx}）　運星{scopeFacts.yun}　流年{scopeFacts.flow}
-              　<span style={{ color: pairColor(scopeFacts.ji) }}>{scopeFacts.combo}（{scopeFacts.ji}）</span>
+              <span>山星{scopeFacts.shan}（{scopeFacts.shanWx}）</span>
+              <span>向星{scopeFacts.xiang}（{scopeFacts.xiangWx}）</span>
+              <span>運星{scopeFacts.yun}</span>
+              <span>流年{scopeFacts.flow}</span>
+              <span style={{ color: pairColor(scopeFacts.ji) }}>{scopeFacts.combo}（{scopeFacts.ji}）</span>
             </div>
           )}
           <div className="ai-theme-row">
