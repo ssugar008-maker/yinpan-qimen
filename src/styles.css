@@ -890,6 +890,63 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .xk-ana-row { font-size: 13px; color: #4a4238; padding: 3px 0; line-height: 1.6; }
 .xk-ana-row.verdict { font-weight: 700; color: var(--accent); margin-top: 4px; }
 
+/* 玄空：替卦起星 */
+.xk-qixing { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0 10px; }
+.xk-tigua-suggest {
+  font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 12px; cursor: pointer;
+  border: 1px solid #d97706; background: #fef3e2; color: #b45309; font-family: inherit;
+}
+.xk-tigua-suggest:hover { background: #fde8c8; }
+.xk-tigua-note {
+  font-size: 12px; color: #6a5f4f; line-height: 1.7; margin-bottom: 10px;
+  padding: 6px 10px; background: #f4f0fb; border: 1px solid #e2d3f5; border-radius: 8px;
+}
+.xk-ai-hist-qx { font-size: 10px; font-weight: 700; color: #fff; background: #b45309; padding: 1px 5px; border-radius: 8px; flex: none; }
+
+/* 奇門：問事解讀（用神表＋應期線索） */
+.ask-ys { margin-bottom: 10px; }
+.ask-ys-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 13px; padding: 6px 10px; background: #fff; border: 1px solid #eee5d5; border-radius: 6px; margin-bottom: 4px;
+}
+.ask-ys-name { font-weight: 700; color: var(--accent); flex: none; }
+.ask-ys-role { color: #8a8073; font-size: 12px; }
+.ask-ys-palace { font-weight: 700; color: #4a4238; margin-left: auto; flex: none; }
+.ask-ys-marks { display: flex; gap: 4px; flex-wrap: wrap; }
+.ask-mark { font-size: 10px; font-weight: 700; color: #fff; background: #9a86c0; padding: 1px 7px; border-radius: 9px; }
+.ask-mark.bad { background: #c62828; }
+.ask-timing { margin-bottom: 10px; }
+.ask-timing-row {
+  font-size: 12px; color: #4a4238; line-height: 1.7;
+  padding: 5px 10px; background: #faf7f1; border: 1px solid #eee5d5; border-radius: 6px; margin-bottom: 4px;
+}
+
+/* AI 追問（多輪對話） */
+.fu { margin-top: 10px; border-top: 1px dashed #e0d6c2; padding-top: 10px; }
+.fu-thread { margin-bottom: 8px; }
+.fu-pair { margin-bottom: 8px; }
+.fu-q, .fu-a { display: flex; gap: 6px; font-size: 13px; line-height: 1.7; padding: 6px 10px; border-radius: 8px; }
+.fu-q { background: #f4f0fb; color: #4a3a6b; margin-bottom: 4px; }
+.fu-a { background: #f7f3fc; border: 1px solid #e2d3f5; color: #333; white-space: pre-wrap; }
+.fu-tag { flex: none; font-size: 10px; font-weight: 700; color: #fff; background: #9a86c0; padding: 1px 7px; border-radius: 9px; height: fit-content; margin-top: 3px; }
+.fu-a .fu-tag { background: #6b3fa0; }
+.fu-input-row { display: flex; gap: 6px; }
+.fu-input {
+  flex: 1; padding: 8px 10px; font-size: 13px; border: 1px solid var(--line);
+  border-radius: 8px; font-family: inherit; box-sizing: border-box;
+}
+.fu-send {
+  flex: none; font-size: 13px; font-weight: 700; padding: 8px 16px; border-radius: 8px; cursor: pointer;
+  border: 1px solid #c9b6e4; background: linear-gradient(135deg, #f3edfb, #e9def8); color: #6b3fa0; font-family: inherit;
+}
+.fu-send:disabled { opacity: 0.6; cursor: default; }
+.fu-send:not(:disabled):hover { background: linear-gradient(135deg, #efe6fa, #e2d3f5); }
+
+/* AI 用量徽章 */
+.usage-badge {
+  text-align: center; font-size: 11px; color: #9a86c0; margin: 2px 0 4px; cursor: help;
+}
+
 /* 玄空：AI 分析（可點宮位 × 主題） */
 .xk-cell.pickable { cursor: pointer; }
 .xk-cell.pickable:hover { background: #fdfaf3; border-color: #c9b6e4; }

@@ -1,12 +1,13 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   GRID, PALACE_DIR, PALACE_GUA, PALACE_WX, STAR_JI, STAR_NAME, STAR_WX, PERIODS, MOUNTAINS24,
-  oppositeMountain, xuanKongChart, chartTypes, castleGate, starPair, remedyText,
+  oppositeMountain, xuanKongChart, xuanKongChartTiGua, chartTypes, castleGate, starPair, remedyText,
   annualStar, annualChart, lifeGua, bazhai, GUA_NAME, EAST4,
   mountainFromDegree, mountainCenter, degreeOffset,
 } from './engine.js';
 import { useCloudStore } from '../cloud.js';
 import { aiInterpret } from '../ai.js';
+import FollowUpChat from '../FollowUp.jsx';
 
 // AI 分析主題（與 api/interpret.js 的 XK_THEMES 對應；「綜合」＝原有整體解讀，「自訂」＝自由提問）
 const XK_AI_THEMES = ['綜合', '傢俬擺設', '顏色', '形狀材質', '風水擺設', '房間用途', '財運', '健康', '感情桃花', '事業文昌', '化解催旺', '自訂'];
@@ -48,13 +49,17 @@ export default function XuanKong() {
   const [flowYear, setFlowYear] = useState(now.getFullYear());
   const [degree, setDegree] = useState('0');
   const [degMode, setDegMode] = useState('向'); // 度數為 坐山 或 向首
+  const [qiXing, setQiXing] = useState('下卦'); // 起星方式：下卦 / 替卦（兼向用）
   const [perA, setPerA] = useState(8);
   const [perB, setPerB] = useState(9);
   const [birthYear, setBirthYear] = useState(1990);
   const [gender, setGender] = useState('男');
 
   const faceM = oppositeMountain(sitM);
-  const chart = useMemo(() => xuanKongChart(period, sitM, faceM), [period, sitM, faceM]);
+  const chart = useMemo(
+    () => (qiXing === '替卦' ? xuanKongChartTiGua(period, sitM, faceM) : xuanKongChart(period, sitM, faceM)),
+    [period, sitM, faceM, qiXing],
+  );
   const types = useMemo(() => chartTypes(chart), [chart]);
   const castle = useMemo(() => castleGate(chart), [chart]);
   const flow = useMemo(() => annualChart(flowYear), [flowYear]);
@@ -95,8 +100,12 @@ export default function XuanKong() {
   const [aiCustom, setAiCustom] = useState('');
   const [aiContext, setAiContext] = useState('');
   const aiPanelRef = useRef(null);
+  // 替卦起星說明（兼向時顯示並送入 AI）
+  const tiGuaNote = chart.tiGua
+    ? `山星原${chart.tiGua.sit.orig}入中，兼向替為${chart.tiGua.sit.star}入中（${chart.tiGua.sit.via ? `經${chart.tiGua.sit.via}山` : '五黃無替'}，${chart.tiGua.sit.forward ? '順' : '逆'}飛）；向星原${chart.tiGua.face.orig}入中，替為${chart.tiGua.face.star}入中（${chart.tiGua.face.via ? `經${chart.tiGua.face.via}山` : '五黃無替'}，${chart.tiGua.face.forward ? '順' : '逆'}飛）`
+    : '';
   const chartPayload = useMemo(() => ({
-    sit: sitM, face: faceM, period, flowYear, flowStar,
+    sit: sitM, face: faceM, period, flowYear, flowStar, qiXing, tiGuaNote,
     types: types.map((t) => ({ n: t.n, t: t.t })),
     palaces: GRID.map((p) => {
       const c = starPair(chart.sG[p], chart.fG[p]);
@@ -111,12 +120,12 @@ export default function XuanKong() {
         combo: c.n, ji: c.t, comboDesc: c.d, remedy: remedyText(c.r),
       };
     }),
-  }), [sitM, faceM, period, flowYear, flowStar, types, chart, flow]);
+  }), [sitM, faceM, period, flowYear, flowStar, qiXing, tiGuaNote, types, chart, flow]);
 
-  // 存檔 key 含範圍＋主題＋自訂問題＋情境，問法不同各自存一份
+  // 存檔 key 含起星方式＋範圍＋主題＋自訂問題＋情境，問法不同各自存一份
   const chartKey = `${sitM}${faceM}|${period}|${flowYear}`;
   const customQ = aiCustom.trim(), ctxQ = aiContext.trim();
-  const aiKey = `${chartKey}|${aiScope}|${aiTheme}|${aiTheme === '自訂' ? customQ : ''}|${ctxQ}`;
+  const aiKey = `${chartKey}|${qiXing}|${aiScope}|${aiTheme}|${aiTheme === '自訂' ? customQ : ''}|${ctxQ}`;
   const libEntry = (v) => (typeof v === 'string' ? { text: v } : (v || null));
   const [xkAi, setXkAi] = useState({ loading: false, text: '', error: '' });
   useEffect(() => {
@@ -126,20 +135,21 @@ export default function XuanKong() {
     const text = (hit && hit.text) || (legacy && legacy.text) || '';
     setXkAi((prev) => (prev.loading ? prev : { loading: false, text, error: '' })); // 分析中不被雲端同步打斷
   }, [aiKey, xkAiLib]);
+  const isOverall = aiScope === '整體';
+  const xkBasePayload = {
+    task: isOverall ? 'xkOverall' : 'xkPalace',
+    chart: chartPayload,
+    palace: isOverall ? undefined : aiScope,
+    theme: aiTheme,
+    custom: aiTheme === '自訂' ? customQ : '',
+    context: ctxQ,
+  };
   const runXkAi = async () => {
     setXkAi({ loading: true, text: '', error: '' });
     try {
-      const isOverall = aiScope === '整體';
-      const text = await aiInterpret({
-        task: isOverall ? 'xkOverall' : 'xkPalace',
-        chart: chartPayload,
-        palace: isOverall ? undefined : aiScope,
-        theme: aiTheme,
-        custom: aiTheme === '自訂' ? customQ : '',
-        context: ctxQ,
-      });
+      const { text } = await aiInterpret(xkBasePayload);
       setXkAi({ loading: false, text, error: '' });
-      if (text) setXkAiLib((lib) => ({ ...lib, [aiKey]: { text, scope: aiScope, theme: aiTheme, custom: aiTheme === '自訂' ? customQ : '', context: ctxQ, ts: Date.now() } }));
+      if (text) setXkAiLib((lib) => ({ ...lib, [aiKey]: { text, scope: aiScope, theme: aiTheme, custom: aiTheme === '自訂' ? customQ : '', context: ctxQ, qx: qiXing, thread: (libEntry(lib[aiKey]) || {}).thread || [], ts: Date.now() } }));
     } catch (e) { setXkAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
   };
   const AI_SCOPES = ['整體', ...GRID.map((p) => PALACE_GUA[p])];
@@ -150,12 +160,13 @@ export default function XuanKong() {
   // 本盤已存的分析（可點回看，不需重新呼叫 AI）
   const savedList = useMemo(() => Object.entries(xkAiLib)
     .filter(([k]) => k.startsWith(`${chartKey}|`))
-    .map(([k, v]) => { const e = libEntry(v); const f = k.split('|'); return e && e.text ? { k, text: e.text, scope: e.scope || f[3] || '整體', theme: e.theme || f[4] || '綜合', custom: e.custom || f[5] || '', context: e.context || f[6] || '', ts: e.ts || 0 } : null; })
+    .map(([k, v]) => { const e = libEntry(v); const f = k.split('|'); return e && e.text ? { k, text: e.text, scope: e.scope || f[3] || '整體', theme: e.theme || f[4] || '綜合', custom: e.custom || f[5] || '', context: e.context || f[6] || '', qx: e.qx || '', ts: e.ts || 0 } : null; })
     .filter(Boolean)
     .sort((a, b) => b.ts - a.ts), [xkAiLib, chartKey]);
   const restoreSaved = (s) => {
     setAiScope(s.scope); setAiTheme(s.theme);
     setAiCustom(s.theme === '自訂' ? s.custom : ''); setAiContext(s.context);
+    if (s.qx) setQiXing(s.qx);
     setXkAi({ loading: false, text: s.text, error: '' });
   };
   // AI 面板所選宮位的盤面事實（讓使用者清楚問的是哪一宮）
@@ -168,19 +179,20 @@ export default function XuanKong() {
   });
   const cmpKey = `${sitM}${faceM}|cmp|${perA}|${perB}`;
   const [cmpAi, setCmpAi] = useState({ loading: false, text: '', error: '' });
-  useEffect(() => { setCmpAi({ loading: false, text: (libEntry(xkAiLib[cmpKey]) || {}).text || '', error: '' }); }, [cmpKey]);
+  useEffect(() => { setCmpAi((prev) => (prev.loading ? prev : { loading: false, text: (libEntry(xkAiLib[cmpKey]) || {}).text || '', error: '' })); }, [cmpKey, xkAiLib]);
+  const cmpBasePayload = {
+    task: 'xkCompare',
+    compare: {
+      sit: sitM, face: faceM, sitGua: PALACE_GUA[chartA.sitPalace], faceGua: PALACE_GUA[chartA.facePalace],
+      perA, perB, typesA, typesB, chartA: periodPayload(chartA, typesA), chartB: periodPayload(chartB, typesB),
+    },
+  };
   const runCmpAi = async () => {
     setCmpAi({ loading: true, text: '', error: '' });
     try {
-      const text = await aiInterpret({
-        task: 'xkCompare',
-        compare: {
-          sit: sitM, face: faceM, sitGua: PALACE_GUA[chartA.sitPalace], faceGua: PALACE_GUA[chartA.facePalace],
-          perA, perB, typesA, typesB, chartA: periodPayload(chartA, typesA), chartB: periodPayload(chartB, typesB),
-        },
-      });
+      const { text } = await aiInterpret(cmpBasePayload);
       setCmpAi({ loading: false, text, error: '' });
-      if (text) setXkAiLib((lib) => ({ ...lib, [cmpKey]: text }));
+      if (text) setXkAiLib((lib) => ({ ...lib, [cmpKey]: { text, thread: (libEntry(lib[cmpKey]) || {}).thread || [] } }));
     } catch (e) { setCmpAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
   };
 
@@ -192,7 +204,7 @@ export default function XuanKong() {
     <div className="xk">
       {/* 排盤輸入 */}
       <div className="panel">
-        <div className="panel-head">玄空飛星排盤（下卦）</div>
+        <div className="panel-head">玄空飛星排盤（{qiXing}）</div>
         <div className="panel-body">
           <div className="xk-form">
             <label>羅盤度數
@@ -226,7 +238,18 @@ export default function XuanKong() {
           <div className="xk-sub">
             {period}運　坐{sitM}山（{mountainCenter(sitM)}°）　向{faceM}（{mountainCenter(faceM)}°）　｜　{flowYear}年流年 {flowStar}入中
           </div>
-          {jianXiang && <div className="xk-jx">⚠ 度數 {degree}° 接近兩山交界（兼向），下卦排盤或需改用替卦起星。</div>}
+          <div className="xk-qixing">
+            <span className="q-label">起星</span>
+            <div className="seg">
+              <button type="button" className={qiXing === '下卦' ? 'on' : ''} onClick={() => setQiXing('下卦')}>下卦</button>
+              <button type="button" className={qiXing === '替卦' ? 'on' : ''} onClick={() => setQiXing('替卦')}>替卦（兼向）</button>
+            </div>
+            {jianXiang && qiXing === '下卦' && (
+              <button type="button" className="xk-tigua-suggest" onClick={() => setQiXing('替卦')}>兼向 → 改用替卦</button>
+            )}
+          </div>
+          {jianXiang && qiXing === '下卦' && <div className="xk-jx">⚠ 度數 {degree}° 接近兩山交界（兼向），下卦排盤或需改用替卦起星。</div>}
+          {qiXing === '替卦' && <div className="xk-tigua-note">替卦起星：{tiGuaNote}。</div>}
 
           <XkGrid chart={chart} flow={flow} onPick={pickAiPalace} picked={aiScope} />
           <div className="xk-legend">
@@ -313,13 +336,22 @@ export default function XuanKong() {
           </button>
           {xkAi.error && <div className="ai-error">{xkAi.error}</div>}
           {xkAi.text && <div className="ai-result">{xkAi.text}</div>}
-          {xkAi.text && <div className="ai-saved">✓ 已按「{aiScope === '整體' ? '整體' : `${aiScope}宮`}・{aiTheme}」存檔（本坐向／運／流年），重整頁面亦保留</div>}
+          {xkAi.text && <div className="ai-saved">✓ 已按「{aiScope === '整體' ? '整體' : `${aiScope}宮`}・{aiTheme}」存檔（本坐向／運／流年{qiXing === '替卦' ? '／替卦' : ''}），重整頁面亦保留</div>}
+          {xkAi.text && (
+            <FollowUpChat
+              basePayload={xkBasePayload}
+              thread={(libEntry(xkAiLib[aiKey]) || {}).thread || []}
+              onAppend={(qa) => setXkAiLib((lib) => { const e0 = libEntry(lib[aiKey]) || { text: xkAi.text }; return { ...lib, [aiKey]: { ...e0, text: e0.text || xkAi.text, thread: [...(e0.thread || []), qa] } }; })}
+              placeholder={`追問：就${aiScope === '整體' ? '整體' : `${aiScope}宮`}「${aiTheme}」解讀再問…`}
+            />
+          )}
           {savedList.length > 0 && (
             <div className="xk-ai-hist">
               <div className="xk-sec-head">本盤已存分析（點擊回看）</div>
               {savedList.map((s) => (
                 <button key={s.k} type="button" className={`xk-ai-hist-row${s.k === aiKey ? ' on' : ''}`} onClick={() => restoreSaved(s)}>
                   <span className="xk-ai-hist-scope">{s.scope === '整體' ? '整體' : `${s.scope}宮`}</span>
+                  {s.qx === '替卦' && <span className="xk-ai-hist-qx">替</span>}
                   <span className="xk-ai-hist-theme">{s.theme === '自訂' ? (s.custom || '自訂') : s.theme}</span>
                   <span className="xk-ai-hist-text">{s.text.slice(0, 40)}…</span>
                 </button>
@@ -407,6 +439,14 @@ export default function XuanKong() {
             {cmpAi.error && <div className="ai-error">{cmpAi.error}</div>}
             {cmpAi.text && <div className="ai-result">{cmpAi.text}</div>}
             {cmpAi.text && <div className="ai-saved">✓ 已存檔（本坐向＋{perA}→{perB}運），重整頁面亦保留</div>}
+            {cmpAi.text && (
+              <FollowUpChat
+                basePayload={cmpBasePayload}
+                thread={(libEntry(xkAiLib[cmpKey]) || {}).thread || []}
+                onAppend={(qa) => setXkAiLib((lib) => { const e0 = libEntry(lib[cmpKey]) || { text: cmpAi.text }; return { ...lib, [cmpKey]: { ...e0, text: e0.text || cmpAi.text, thread: [...(e0.thread || []), qa] } }; })}
+                placeholder="追問：就這次換運再問（例：哪個宮位要先處理）…"
+              />
+            )}
           </div>
         </div>
       </div>

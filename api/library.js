@@ -6,7 +6,7 @@
 //   GET  /api/library?ns=<namespace>        → { updatedAt, data }
 //   POST /api/library  { ns, updatedAt, data } → 覆寫該 namespace（last-write-wins）
 
-const ALLOWED_NS = new Set(['qimen_palace', 'qimen_find', 'xuankong']);
+const ALLOWED_NS = new Set(['qimen_palace', 'qimen_find', 'qimen_ask', 'xuankong']);
 
 function kvConfig() {
   const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
