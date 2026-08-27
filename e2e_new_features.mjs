@@ -39,7 +39,7 @@ const askChips = await page.evaluate(() => {
   const p = [...document.querySelectorAll('.ask-panel')][0];
   return [...p.querySelectorAll('.ai-theme-chip')].map((b) => b.textContent.trim());
 });
-ok('10 個問事類別', askChips.length === 10 && askChips[0] === '求財' && askChips.at(-1) === '自訂', askChips);
+ok('12 個問事類別（含尋物、自選用神）', askChips.length === 12 && askChips[0] === '求財' && askChips.includes('尋物') && askChips.includes('自選用神') && askChips.at(-1) === '自訂', askChips);
 const ysRows = await page.evaluate(() => [...document.querySelectorAll('.ask-ys-row')].map((r) => ({
   name: r.querySelector('.ask-ys-name').textContent.trim(),
   palace: r.querySelector('.ask-ys-palace').textContent.trim(),
@@ -105,6 +105,109 @@ await sleep(200);
 await page.evaluate(() => [...document.querySelectorAll('.ask-panel .ai-theme-chip')].find((b) => b.textContent === '求財').click());
 await sleep(150);
 
+// 尋物類別（併入問事）＋宮位關係＋空亡轉宮
+console.log('\n[2c] 尋物類別（併入問事面板）');
+ok('獨立尋物面板已移除', await page.evaluate(() => !document.querySelector('.find-panel')));
+await page.evaluate(() => [...document.querySelectorAll('.ask-panel .ai-theme-chip')].find((b) => b.textContent === '尋物').click());
+await sleep(200);
+let findState = await page.evaluate(() => {
+  const p = document.querySelector('.ask-panel');
+  const heads = [...p.querySelectorAll('.xk-sec-head')].map((h) => h.textContent.trim());
+  const rows = [...p.querySelectorAll('.ask-ys-row')].map((r) => r.querySelector('.ask-ys-name').textContent.trim());
+  const factRows = [...p.querySelectorAll('.ask-timing-row')].map((r) => r.textContent.trim());
+  return { heads, rows, factRows, btn: p.querySelector('.ai-btn').textContent.trim() };
+});
+ok('尋物用神＝時干（物品）＋日干（事主）＋馬星', findState.rows.some((x) => x.startsWith('時干')) && findState.rows.some((x) => x.startsWith('日干')) && findState.rows.some((x) => x.startsWith('馬星')), findState.rows);
+ok('尋物顯示推算依據（生克/快慢/距離）', findState.heads.some((h) => h.includes('推算依據')) && findState.factRows.some((x) => x.includes('容易找到') || x.includes('較難找到') || x.includes('費力')), findState.factRows);
+ok('按鈕為尋物解讀', findState.btn.includes('尋物'), findState.btn);
+
+console.log('\n[2d] 宮位關係（五行×四害）與空亡轉宮標註');
+// 預設盤申酉空 → 坤二、兌七空亡；求財用神戊落宮等會帶標註。先看求財
+await page.evaluate(() => [...document.querySelectorAll('.ask-panel .ai-theme-chip')].find((b) => b.textContent === '求財').click());
+await sleep(200);
+let relState = await page.evaluate(() => {
+  const p = document.querySelector('.ask-panel');
+  const heads = [...p.querySelectorAll('.xk-sec-head')].map((h) => h.textContent.trim());
+  const relRows = [...p.querySelectorAll('.ask-timing-row')].map((r) => r.textContent.trim());
+  const marks = [...p.querySelectorAll('.ask-mark')].map((m) => m.textContent.trim());
+  return { heads, relRows, marks };
+});
+ok('顯示宮位關係區塊', relState.heads.some((h) => h.includes('宮位關係')), relState.heads);
+ok('宮位關係含五行與四害狀態', relState.relRows.some((x) => x.includes('屬') && (x.includes('四害') || x.includes('無四害'))), relState.relRows.slice(0, 2));
+// 預設盤空亡宮為坤二、兌七：求財用神戊落震三（門迫擊刑），生門落離九…檢查是否有任一用神空亡標註（依盤而定）
+console.log('    （求財用神標記：', relState.marks.join('、') || '無', '）');
+
+console.log('\n[2e] 自選用神');
+await page.evaluate(() => [...document.querySelectorAll('.ask-panel .ai-theme-chip')].find((b) => b.textContent === '自選用神').click());
+await sleep(200);
+let c2 = await page.evaluate(() => {
+  const p = document.querySelector('.ask-panel');
+  return {
+    rows: p.querySelectorAll('.ask-c2-row').length,
+    btnDisabled: p.querySelector('.ai-btn').disabled,
+    hasAdd: !!p.querySelector('.ask-c2-add'),
+  };
+});
+ok('自選用神預設一列＋可加', c2.rows === 1 && c2.hasAdd, c2);
+ok('未填代表意義時按鈕停用', c2.btnDisabled === true, c2);
+// 填代表意義 → 啟用；用神表出現該用神＋參照宮
+await page.evaluate(() => {
+  const input = document.querySelector('.ask-c2-row input');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(input, '這間房子');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await sleep(200);
+c2 = await page.evaluate(() => {
+  const p = document.querySelector('.ask-panel');
+  return {
+    btnDisabled: p.querySelector('.ai-btn').disabled,
+    ysNames: [...p.querySelectorAll('.ask-ys-name')].map((x) => x.textContent.trim()),
+    ysRoles: [...p.querySelectorAll('.ask-ys-role')].map((x) => x.textContent.trim()),
+  };
+});
+ok('填寫後按鈕啟用', c2.btnDisabled === false, c2);
+ok('用神表顯示「生門（這間房子）」', c2.ysNames.some((x) => x.includes('生門') && x.includes('這間房子')), c2.ysNames);
+ok('自動補參照宮（時干/日干）', c2.ysRoles.some((x) => x.includes('參照')), c2.ysRoles);
+// 加第二個用神（天干戊＝資金）
+await page.evaluate(() => document.querySelector('.ask-c2-add').click());
+await sleep(150);
+await page.evaluate(() => {
+  const row = document.querySelectorAll('.ask-c2-row')[1];
+  const catSel = row.querySelectorAll('select')[0];
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+  setter.call(catSel, 'stem'); catSel.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await sleep(150);
+await page.evaluate(() => {
+  const row = document.querySelectorAll('.ask-c2-row')[1];
+  const symSel = row.querySelectorAll('select')[1];
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+  setter.call(symSel, '戊'); symSel.dispatchEvent(new Event('change', { bubbles: true }));
+  const input = row.querySelector('input');
+  const isetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  isetter.call(input, '資金');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await sleep(200);
+c2 = await page.evaluate(() => {
+  const p = document.querySelector('.ask-panel');
+  return {
+    rows: p.querySelectorAll('.ask-c2-row').length,
+    ysNames: [...p.querySelectorAll('.ask-ys-name')].map((x) => x.textContent.trim()),
+    relHeads: [...p.querySelectorAll('.xk-sec-head')].map((h) => h.textContent.trim()),
+  };
+});
+ok('第二用神列已加（戊·資金）', c2.rows === 2 && c2.ysNames.some((x) => x.includes('戊') && x.includes('資金')), c2.ysNames);
+// 跑自選用神 AI（模擬）
+await page.evaluate(() => document.querySelector('.ask-panel .ai-btn').click());
+await sleep(400);
+const c2Ai = await page.evaluate(() => document.querySelector('.ask-panel .ai-result')?.textContent.trim() || null);
+ok('自選用神 AI 解讀顯示', !!c2Ai && c2Ai.includes('測試回答'), c2Ai);
+// 還原類別
+await page.evaluate(() => [...document.querySelectorAll('.ask-panel .ai-theme-chip')].find((b) => b.textContent === '求財').click());
+await sleep(150);
+
 // 跑 AI 解讀（模擬）＋追問
 console.log('\n[3] 問事 AI 解讀＋多輪追問');
 await page.evaluate(() => document.querySelector('.ask-panel .ai-btn').click());
@@ -117,7 +220,7 @@ askState = await page.evaluate(() => {
     hasFu: !!p.querySelector('.fu-input'),
   };
 });
-ok('AI 解讀顯示（模擬回應）', askState.result === '【測試回答1】此事可成，應在丑月。', askState.result);
+ok('AI 解讀顯示（模擬回應）', !!askState.result && askState.result.includes('測試回答'), askState.result);
 ok('已存檔提示', askState.saved);
 ok('追問框出現', askState.hasFu);
 await page.type('.ask-panel .fu-input', '具體哪一年？');
@@ -131,9 +234,9 @@ askState = await page.evaluate(() => {
     lib: JSON.parse(localStorage.getItem('qimen_ask_v1') || '{}'),
   };
 });
-ok('追問問答顯示', askState.q?.includes('具體哪一年？') && askState.a?.includes('【測試回答2】'), askState);
-const askLibEntry = Object.values(askState.lib)[0] || {};
-ok('對話串已存檔（thread 1 輪）', Array.isArray(askLibEntry.thread) && askLibEntry.thread.length === 1 && askLibEntry.thread[0].q === '具體哪一年？', askLibEntry);
+ok('追問問答顯示', askState.q?.includes('具體哪一年？') && askState.a?.includes('測試回答'), askState);
+const askLibEntry = Object.entries(askState.lib).find(([k]) => k.includes('|求財|'))?.[1] || {};
+ok('對話串已存檔（求財 key，thread 1 輪）', Array.isArray(askLibEntry.thread) && askLibEntry.thread.length === 1 && askLibEntry.thread[0].q === '具體哪一年？', askLibEntry);
 
 // 重整後保留
 console.log('\n[4] 重整後問事存檔與對話串保留');
@@ -144,7 +247,7 @@ askState = await page.evaluate(() => {
   const p = document.querySelector('.ask-panel');
   return { result: p?.querySelector('.ai-result')?.textContent.trim(), threadQ: p?.querySelector('.fu-q')?.textContent.trim() };
 });
-ok('重整後解讀與追問仍在', askState.result?.includes('測試回答1') && askState.threadQ?.includes('具體哪一年？'), askState);
+ok('重整後解讀與追問仍在', askState.result?.includes('測試回答') && askState.threadQ?.includes('具體哪一年？'), askState);
 
 // 宮位 modal 追問
 console.log('\n[5] 宮位詳情 AI 解讀＋追問');

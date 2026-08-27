@@ -903,6 +903,27 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 }
 .xk-ai-hist-qx { font-size: 10px; font-weight: 700; color: #fff; background: #b45309; padding: 1px 5px; border-radius: 8px; flex: none; }
 
+/* 奇門：自選用神 builder */
+.ask-c2 { margin-bottom: 10px; }
+.ask-c2-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+.ask-c2-row select {
+  flex: none; max-width: 96px; padding: 7px 6px; font-size: 13px; border: 1px solid var(--line);
+  border-radius: 8px; font-family: inherit; background: #fff; box-sizing: border-box;
+}
+.ask-c2-row input {
+  flex: 1; min-width: 0; padding: 8px 10px; font-size: 13px; border: 1px solid var(--line);
+  border-radius: 8px; font-family: inherit; box-sizing: border-box;
+}
+.ask-c2-del {
+  flex: none; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line);
+  background: #fff; color: #999; cursor: pointer; font-size: 12px; font-family: inherit;
+}
+.ask-c2-add {
+  font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 12px; cursor: pointer;
+  border: 1px dashed #c9b6e4; background: #faf7fd; color: #6b3fa0; font-family: inherit;
+}
+.ask-c2-add:hover { background: #f3edfb; }
+
 /* 奇門：問事解讀（用神表＋應期線索） */
 .ask-ys { margin-bottom: 10px; }
 .ask-ys-row {

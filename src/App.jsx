@@ -6,7 +6,7 @@ import { DOOR_INFO, STAR_INFO, GOD_INFO, STEM_INFO, PALACE_INFO, WUXING_SHENG, W
 import { useCloudStore } from './cloud.js';
 import { aiInterpret, AI_MODELS, getAiModelId, setAiModelId, getUsage } from './ai.js';
 import FollowUpChat from './FollowUp.jsx';
-import { shiZhuStem, loveYongShen } from './qimen/ask.js';
+import { shiZhuStem, loveYongShen, detectFuFan, palaceHarms, kongShift, palaceRelation, findFacts, CUSTOM_CATS } from './qimen/ask.js';
 
 // ---- 简体→繁体（本盘用到的字） ----
 const S2T = {
@@ -27,10 +27,6 @@ const PALACE_SHORT = {
 // 洛书九宫布局：巽4 离9 坤2 / 震3 中5 兑7 / 艮8 坎1 乾6
 const GRID = [4, 9, 2, 3, 5, 7, 8, 1, 6];
 const PILLAR_LABELS = ['年', '月', '日', '時']; // 各柱天干落天盤之宮 → 標於該宮左上
-// 尋物用：九星本宮（简体，與 engine 一致）、對宮、後天八卦環（坎艮震巽離坤兌乾）
-const STAR_HOME_S = { 1: '天蓬', 8: '天任', 3: '天冲', 4: '天辅', 9: '天英', 2: '天芮', 7: '天柱', 6: '天心' };
-const OPP_PALACE = { 1: 9, 9: 1, 2: 8, 8: 2, 3: 7, 7: 3, 4: 6, 6: 4 };
-const RING8 = [1, 8, 3, 4, 9, 2, 7, 6];
 
 // 外干（隐干）在九宮格外的方位（依各宮洛书方位贴边）
 const WAIGAN_POS = {
@@ -102,13 +98,7 @@ function palaceMarkLabels(p, result, shiZhuPalace, shiGanPalace) {
   return marks;
 }
 
-// 九星伏吟／反吟（全盤八宮星歸本宮＝伏吟；全落對宮＝反吟）
-function detectFuFan(result) {
-  const outer = [1, 2, 3, 4, 6, 7, 8, 9];
-  if (outer.every((p) => (result.palaces[p].stars || [])[0] === STAR_HOME_S[p])) return '伏吟';
-  if (outer.every((p) => (result.palaces[p].stars || [])[0] === STAR_HOME_S[OPP_PALACE[p]])) return '反吟';
-  return '';
-}
+// 九星伏吟／反吟、四害、空亡轉先天、宮宮關係、尋物推算等純邏輯見 qimen/ask.js
 
 // 兩五行的生克關係：回傳 { from, to, type:'生'|'克' }；相同五行（比和）回傳 null
 function wxRelation(wxA, wxB) {
@@ -575,96 +565,6 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
   );
 }
 
-// 自動尋物：時干為物、日干為事主，綜合生克/伏吟反吟/距離/符號，AI 給出判斷
-const FIND_KEY = 'qimen_find_v1';
-function FindItemPanel({ result, chartKey }) {
-  const itemP = result.pillarMarkPalaces[3];   // 時干宮（物品）
-  const querentP = result.pillarMarkPalaces[2]; // 日干宮（事主）
-  const [findLib, setFindLib] = useCloudStore('qimen_find', FIND_KEY, {});
-  const [ai, setAi] = useState({ loading: false, text: '', error: '' });
-  // 舊版存檔值為純字串，新版為 { text, thread }
-  const findEntry = (v) => (typeof v === 'string' ? { text: v, thread: [] } : (v || { text: '', thread: [] }));
-  useEffect(() => { setAi((a) => (a.loading ? a : { loading: false, text: findEntry(findLib[chartKey]).text, error: '' })); }, [chartKey, findLib]);
-
-  const info = useMemo(() => {
-    if (!itemP || !querentP) return null;
-    const itemWx = PALACE_INFO[itemP].wx, qWx = PALACE_INFO[querentP].wx;
-    let relation, ease;
-    if (itemP === querentP) { relation = '兩宮同宮'; ease = '物品就在事主附近'; }
-    else if (WUXING_KE[qWx] === itemWx) { relation = `事主宮(${qWx}) 剋 物品宮(${itemWx})`; ease = '容易找到'; }
-    else if (WUXING_KE[itemWx] === qWx) { relation = `物品宮(${itemWx}) 剋 事主宮(${qWx})`; ease = '較難找到'; }
-    else if (WUXING_SHENG[itemWx] === qWx) { relation = `物品宮(${itemWx}) 生 事主宮(${qWx})`; ease = '物品易尋回'; }
-    else if (WUXING_SHENG[qWx] === itemWx) { relation = `事主宮(${qWx}) 生 物品宮(${itemWx})`; ease = '需費力尋找'; }
-    else { relation = `兩宮同屬${qWx}`; ease = '吉凶不明顯（平）'; }
-    const outer = [1, 2, 3, 4, 6, 7, 8, 9];
-    const fuYin = outer.every((p) => (result.palaces[p].stars || [])[0] === STAR_HOME_S[p]);
-    const fanYin = !fuYin && outer.every((p) => (result.palaces[p].stars || [])[0] === STAR_HOME_S[OPP_PALACE[p]]);
-    const speed = fuYin ? '伏吟：主慢，需時較久' : fanYin ? '反吟：主快，較快找到' : '星已轉動：速度平常';
-    const di = RING8.indexOf(itemP), dq = RING8.indexOf(querentP);
-    const rd = Math.min(Math.abs(di - dq), 8 - Math.abs(di - dq));
-    const distance = itemP === querentP ? '同宮（物品在事主所在地）' : rd === 1 ? '相鄰（物品不遠）' : rd === 4 ? '對宮（相隔最遠）' : `相隔 ${rd} 位`;
-    const data = result.palaces[itemP];
-    const symbols = [];
-    const addSym = (label, name, inf) => { if (inf) symbols.push({ label, name, info: inf }); };
-    addSym('宮位', PALACE_NAME[itemP], PALACE_INFO[itemP]);
-    addSym('八神', t(data.god), GOD_INFO[data.god]);
-    (data.stars || []).forEach((s) => addSym('九星', t(s), STAR_INFO[s]));
-    addSym('八門', t(data.door), DOOR_INFO[data.door]);
-    (data.tianGan || []).forEach((s) => addSym('天盤干', t(s), STEM_INFO[s]));
-    [data.diGan, data.diGanExtra].filter(Boolean).forEach((s) => addSym('地盤干', t(s), STEM_INFO[s]));
-    return { itemWx, qWx, relation, ease, speed, distance, symbols, fuYin, fanYin };
-  }, [result, itemP, querentP]);
-
-  if (!info) return null;
-  const findPayload = {
-    task: 'qimenFind',
-    find: {
-      hourGan: t(result.pillarStems[3]), dayGan: t(result.pillarStems[2]),
-      item: { palace: PALACE_NAME[itemP], wx: info.itemWx, symbols: info.symbols.map((s) => ({ label: s.label, name: s.name, meaning: s.info.meaning, attrs: s.info.attrs, items: s.info.items })) },
-      querent: { palace: PALACE_NAME[querentP], wx: info.qWx },
-      relation: info.relation, ease: info.ease, speed: info.speed, distance: info.distance,
-    },
-  };
-  const runAi = async () => {
-    setAi({ loading: true, text: '', error: '' });
-    try {
-      const { text } = await aiInterpret(findPayload);
-      setAi({ loading: false, text, error: '' });
-      if (text) setFindLib((lib) => ({ ...lib, [chartKey]: { text, thread: findEntry(lib[chartKey]).thread } }));
-    } catch (e) { setAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
-  };
-
-  const dirOf = (p) => PALACE_INFO[p].meaning.split('、')[0];
-  return (
-    <details className="panel collapsible find-panel" open>
-      <summary className="panel-head">自動尋物（時干為物・日干為事主）</summary>
-      <div className="panel-body">
-        <div className="find-grid">
-          <div className="find-row"><span className="find-k">物品（時干 {t(result.pillarStems[3])}）</span><span className="find-v">{PALACE_NAME[itemP]}・{dirOf(itemP)}・屬{info.itemWx}</span></div>
-          <div className="find-row"><span className="find-k">事主（日干 {t(result.pillarStems[2])}）</span><span className="find-v">{PALACE_NAME[querentP]}・{dirOf(querentP)}・屬{info.qWx}</span></div>
-          <div className="find-row"><span className="find-k">生克</span><span className="find-v">{info.relation} → <b className="find-ease">{info.ease}</b></span></div>
-          <div className="find-row"><span className="find-k">快慢</span><span className="find-v">{info.speed}</span></div>
-          <div className="find-row"><span className="find-k">距離</span><span className="find-v">{info.distance}</span></div>
-        </div>
-        <button type="button" className="ai-btn" onClick={runAi} disabled={ai.loading}>
-          {ai.loading ? 'AI 分析中…' : (ai.text ? '↻ 重新分析（已存檔）' : '✨ AI 尋物分析（方位＋可能地點）')}
-        </button>
-        {ai.error && <div className="ai-error">{ai.error}</div>}
-        {ai.text && <div className="ai-result">{ai.text}</div>}
-        {ai.text && <div className="ai-saved">✓ 已存檔（本盤），重整頁面亦保留</div>}
-        {ai.text && (
-          <FollowUpChat
-            basePayload={findPayload}
-            thread={findEntry(findLib[chartKey]).thread}
-            onAppend={(qa) => setFindLib((lib) => ({ ...lib, [chartKey]: { text: findEntry(lib[chartKey]).text, thread: [...findEntry(lib[chartKey]).thread, qa] } }))}
-            placeholder="追問：就這次尋物再問（例：什麼時候找到）…"
-          />
-        )}
-      </div>
-    </details>
-  );
-}
-
 // ── AI 問事解讀（全盤・用神取用＋應期）────────────────────
 // 用神取用表：kind 為定位方式（door/star/god/stem 落宮、zhiFu/zhiShi、dayStem 事主、hourStem 時干、horse 馬星）
 const ASK_TYPES = [
@@ -720,6 +620,10 @@ const ASK_TYPES = [
     { kind: 'stem', name: '戊', role: '資金、價錢' },
     { kind: 'dayStem', role: '置業人（事主）' },
   ] },
+  // 尋物：時干為物、日干為事主（原「自動尋物」面板併入此類別）
+  { id: '尋物', find: true, ys: [] },
+  // 自選用神：用家自選符號並填寫代表的人事物
+  { id: '自選用神', custom2: true, ys: [] },
   { id: '自訂', ys: [
     { kind: 'dayStem', role: '事主' },
     { kind: 'hourStem', role: '所問之事' },
@@ -756,38 +660,131 @@ function yongShenDisp(spec, result) {
 }
 
 const ASK_KEY = 'qimen_ask_v1';
+const FIND_KEY = 'qimen_find_v1'; // 舊「自動尋物」存檔（唯讀回退顯示）
 function AskPanel({ result, chartKey, shiZhuPalace, shiGanPalace, querent }) {
   const [askLib, setAskLib] = useCloudStore('qimen_ask', ASK_KEY, {});
+  const [findLib] = useCloudStore('qimen_find', FIND_KEY, {});
   const [qtype, setQtype] = useState('求財');
   const [custom, setCustom] = useState('');
+  const [customYs, setCustomYs] = useState([{ cat: 'door', sym: '生门', label: '' }]);
   const [ai, setAi] = useState({ loading: false, text: '', error: '' });
-  // 感情婚姻的用神隨事主設定（近/遠程、性別）而變，存檔 key 需含事主簽名
+  // 感情婚姻的用神隨事主設定（近/遠程、性別）而變，存檔 key 需含事主簽名；自選用神含自選簽名
   const qSig = `${querent.mode}${querent.caster}${querent.querent}`;
-  const askKey = `${chartKey}|${qtype}|${qSig}|${qtype === '自訂' ? custom.trim() : ''}`;
+  const c2Sig = qtype === '自選用神' ? customYs.map((c) => `${c.cat}:${c.sym}:${c.label.trim()}`).join(',') : '';
+  const askKey = `${chartKey}|${qtype}|${qSig}|${qtype === '自訂' ? custom.trim() : c2Sig}`;
   const entry = (v) => (typeof v === 'string' ? { text: v, thread: [] } : (v || null));
-  useEffect(() => { setAi({ loading: false, text: (entry(askLib[askKey]) || {}).text || '', error: '' }); }, [askKey, askLib]);
+  useEffect(() => {
+    const hit = entry(askLib[askKey]);
+    if (hit && hit.text) { setAi({ loading: false, text: hit.text, error: '' }); return; }
+    if (qtype === '尋物') { // 舊「自動尋物」存檔回退顯示
+      const old = entry(findLib[chartKey]);
+      setAi({ loading: false, text: (old && old.text) || '', error: '' });
+      return;
+    }
+    setAi({ loading: false, text: '', error: '' });
+  }, [askKey, askLib, findLib, qtype, chartKey]);
 
   const fuFan = useMemo(() => detectFuFan(result), [result]);
   const shiZhu = useMemo(() => shiZhuStem(result, querent), [result, querent]);
   // 用神落宮解析（含顯示名、宮位、狀態標記）；感情婚姻走合干取用（qimen/ask.js）
   const spec = ASK_TYPES.find((x) => x.id === qtype);
   const resolved = useMemo(() => {
+    const marksOf = (pp) => palaceMarkLabels(pp, result, shiZhuPalace, shiGanPalace);
     if (spec && spec.love) {
-      return loveYongShen(result, shiZhu, shiGanPalace, (pp) => palaceMarkLabels(pp, result, shiZhuPalace, shiGanPalace));
+      return loveYongShen(result, shiZhu, shiGanPalace, marksOf);
+    }
+    if (spec && spec.find) { // 尋物：時干為物、日干為事主（固定日干，不隨遠程設定）
+      const rows = [
+        { disp: `時干 ${t(result.pillarStems[3])}`, role: '遺失物品', palace: result.pillarMarkPalaces[3] },
+        { disp: `日干 ${t(result.pillarStems[2])}`, role: '事主（尋物者）', palace: result.pillarMarkPalaces[2] },
+        { disp: `馬星 ${result.horse.zhi}`, role: '快慢、動靜', palace: result.horse.palace },
+      ];
+      return rows.map((r) => ({ ...r, marks: r.palace ? marksOf(r.palace) : [] }));
+    }
+    if (spec && spec.custom2) { // 自選用神：用家自選符號＋填代表意義；自動補時干/日干參照宮
+      const rows = customYs.map((c) => {
+        const cat = CUSTOM_CATS.find((x) => x.id === c.cat) || CUSTOM_CATS[0];
+        let palace, dispSym;
+        if (cat.kind === 'stem' && c.sym === '甲') { palace = result.zhiFu.palace; dispSym = '甲（值符）'; }
+        else {
+          palace = locateYongShen({ kind: cat.kind, name: c.sym }, result, shiZhuPalace);
+          dispSym = yongShenDisp({ kind: cat.kind, name: c.sym }, result);
+        }
+        return { disp: c.label.trim() ? `${dispSym}（${c.label.trim()}）` : dispSym, role: c.label.trim() || '自選用神', palace, marks: palace ? marksOf(palace) : [] };
+      });
+      [{ kind: 'hourStem', role: '所問之事（參照）' }, { kind: 'dayStem', role: '事主（參照）' }].forEach((rf) => {
+        if (!customYs.some((c) => (CUSTOM_CATS.find((x) => x.id === c.cat) || {}).kind === rf.kind)) {
+          const palace = locateYongShen({ kind: rf.kind }, result, shiZhuPalace);
+          rows.push({ disp: yongShenDisp({ kind: rf.kind }, result), role: rf.role, palace, marks: palace ? marksOf(palace) : [] });
+        }
+      });
+      return rows;
     }
     return spec ? spec.ys.map((s) => {
       const palace = locateYongShen(s, result, shiZhuPalace);
       return {
         disp: yongShenDisp(s, result), role: s.role, palace,
-        marks: palace ? palaceMarkLabels(palace, result, shiZhuPalace, shiGanPalace) : [],
+        marks: palace ? marksOf(palace) : [],
       };
     }) : [];
-  }, [spec, result, shiZhu, shiZhuPalace, shiGanPalace]);
+  }, [spec, result, shiZhu, shiZhuPalace, shiGanPalace, customYs]);
+
+  // 空亡轉先天：空亡宮改標「空亡→轉X宮」／「雙空亡→轉X宮」
+  const resolved2 = useMemo(() => resolved.map((r) => {
+    if (!r.palace) return r;
+    const ks = kongShift(result, r.palace);
+    const marks = r.marks.filter((m) => m !== '空亡');
+    if (ks) marks.push(ks.double ? `雙空亡→轉${PALACE_NAME[ks.to]}` : `空亡→轉${PALACE_NAME[ks.to]}`);
+    else if (r.marks.includes('空亡')) marks.push('空亡');
+    return { ...r, marks };
+  }), [resolved, result]);
+
+  // 宮宮關係（五行生剋 × 四害強弱）：對所有用神落宮兩兩推算
+  const relations = useMemo(() => {
+    const pts = [];
+    const seen = new Set();
+    resolved2.forEach((r) => { if (r.palace && !seen.has(r.palace)) { seen.add(r.palace); pts.push({ p: r.palace, name: r.disp }); } });
+    const out = [];
+    for (let i = 0; i < pts.length && out.length < 8; i++) {
+      for (let j = i + 1; j < pts.length && out.length < 8; j++) {
+        const line = palaceRelation(result, pts[i].p, pts[j].p, pts[i].name, pts[j].name, (p) => PALACE_NAME[p]);
+        if (line) out.push(line);
+      }
+    }
+    return out;
+  }, [resolved2, result]);
+
+  // 空亡轉宮明細（含轉宮符號，送 AI 參讀）
+  const kongNotes = useMemo(() => {
+    const out = [];
+    const seen = new Set();
+    resolved2.forEach((r) => {
+      if (!r.palace || seen.has(r.palace)) return;
+      seen.add(r.palace);
+      const ks = kongShift(result, r.palace);
+      if (ks) out.push({ who: r.disp, from: PALACE_NAME[ks.from], to: PALACE_NAME[ks.to], double: ks.double, toSymbols: buildPalaceSymbols(ks.to, result).map((s) => ({ label: s.label, name: s.name, meaning: s.info.meaning, attrs: s.info.attrs })) });
+    });
+    return out;
+  }, [resolved2, result]);
+
+  // 尋物推算依據（生克／快慢／距離）
+  const facts = useMemo(() => {
+    if (!spec || !spec.find) return [];
+    const itemP = result.pillarMarkPalaces[3], qp = result.pillarMarkPalaces[2];
+    if (!itemP || !qp) return [];
+    const f = findFacts(result, itemP, qp);
+    return [
+      `物品（時干 ${t(result.pillarStems[3])}）落${PALACE_NAME[itemP]}（屬${f.itemWx}）；事主（日干 ${t(result.pillarStems[2])}）落${PALACE_NAME[qp]}（屬${f.qWx}）`,
+      `兩宮生克：${f.relation} → ${f.ease}`,
+      `快慢：${f.speed}`,
+      `距離：${f.distance}`,
+    ];
+  }, [spec, result]);
 
   // 應期線索（規則推算，供顯示並送入 AI）
   const timing = useMemo(() => {
     const lines = [];
-    const main = resolved.find((r) => r.palace);
+    const main = resolved2.find((r) => r.palace);
     if (main) {
       const br = PALACE_BRANCHES[main.palace];
       if (br) lines.push(`主用神「${main.disp}」落${PALACE_NAME[main.palace]}，宮支${br} → 應期多應在${br.split('').join('、')}之月或日`);
@@ -802,7 +799,7 @@ function AskPanel({ result, chartKey, shiZhuPalace, shiGanPalace, querent }) {
     else if (fuFan === '反吟') lines.push('九星反吟 → 應期快速但多反覆');
     lines.push(`馬星在${result.horse.zhi}（落${PALACE_NAME[result.horse.palace]}）→ 逢${result.horse.zhi}之月／日事有動象`);
     return lines;
-  }, [resolved, result, shiGanPalace, fuFan]);
+  }, [resolved2, result, shiGanPalace, fuFan]);
 
   const askPayload = {
     task: 'qimenAsk',
@@ -817,12 +814,15 @@ function AskPanel({ result, chartKey, shiZhuPalace, shiGanPalace, querent }) {
         fuFan,
         shiZhu: shiZhuPalace ? PALACE_NAME[shiZhuPalace] : '', shiGan: shiGanPalace ? PALACE_NAME[shiGanPalace] : '',
       },
-      yongshen: resolved.filter((r) => r.palace).map((r) => ({
+      yongshen: resolved2.filter((r) => r.palace).map((r) => ({
         name: r.disp, role: r.role, palace: PALACE_NAME[r.palace], wx: PALACE_INFO[r.palace].wx,
         branches: PALACE_BRANCHES[r.palace] || '', marks: r.marks,
         symbols: buildPalaceSymbols(r.palace, result).map((s) => ({ label: s.label, name: s.name, meaning: s.info.meaning, attrs: s.info.attrs })),
       })),
       timing,
+      relations,
+      kong: kongNotes,
+      facts,
     },
   };
   const runAi = async () => {
@@ -854,28 +854,70 @@ function AskPanel({ result, chartKey, shiZhuPalace, shiGanPalace, querent }) {
             onChange={(e) => setCustom(e.target.value)}
           />
         )}
+        {/* 自選用神：符號類別＋符號＋代表意義（最多 3 個） */}
+        {spec.custom2 && (
+          <div className="ask-c2">
+            {customYs.map((c, i) => {
+              const cat = CUSTOM_CATS.find((x) => x.id === c.cat) || CUSTOM_CATS[0];
+              return (
+                <div key={i} className="ask-c2-row">
+                  <select value={c.cat} onChange={(e) => {
+                    const nc = CUSTOM_CATS.find((x) => x.id === e.target.value);
+                    setCustomYs((ys) => ys.map((y, j) => (j === i ? { cat: nc.id, sym: (nc.options || [])[0] || '', label: y.label } : y)));
+                  }}>
+                    {CUSTOM_CATS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                  </select>
+                  {cat.options && (
+                    <select value={c.sym} onChange={(e) => setCustomYs((ys) => ys.map((y, j) => (j === i ? { ...y, sym: e.target.value } : y)))}>
+                      {cat.options.map((o) => <option key={o} value={o}>{t(o)}</option>)}
+                    </select>
+                  )}
+                  <input value={c.label} placeholder="代表什麼？例：這間房子／我老闆" onChange={(e) => setCustomYs((ys) => ys.map((y, j) => (j === i ? { ...y, label: e.target.value } : y)))} />
+                  {customYs.length > 1 && <button type="button" className="ask-c2-del" onClick={() => setCustomYs((ys) => ys.filter((_, j) => j !== i))}>✕</button>}
+                </div>
+              );
+            })}
+            {customYs.length < 3 && (
+              <button type="button" className="ask-c2-add" onClick={() => setCustomYs((ys) => [...ys, { cat: 'door', sym: '生门', label: '' }])}>＋ 加一個用神</button>
+            )}
+          </div>
+        )}
         {/* 用神落宮表 */}
         <div className="ask-ys">
-          <div className="xk-sec-head">用神取用（自動定位落宮）</div>
-          {resolved.map((r, i) => (
+          <div className="xk-sec-head">{spec.custom2 ? '用神落宮（自選＋參照）' : '用神取用（自動定位落宮）'}</div>
+          {resolved2.map((r, i) => (
             <div key={i} className="ask-ys-row">
               <span className="ask-ys-name">{r.disp}</span>
               <span className="ask-ys-role">{r.role}</span>
               <span className="ask-ys-palace">{r.palace ? `落 ${PALACE_NAME[r.palace]}` : '未落盤'}</span>
               {r.marks.length > 0 && (
                 <span className="ask-ys-marks">
-                  {r.marks.map((m) => <span key={m} className={`ask-mark${m === '空亡' || m === '門迫' || m.includes('刑') || m.includes('墓') ? ' bad' : ''}`}>{m}</span>)}
+                  {r.marks.map((m) => <span key={m} className={`ask-mark${m === '空亡' || m === '門迫' || m.includes('刑') || m.includes('墓') || m.includes('空亡') ? ' bad' : ''}`}>{m}</span>)}
                 </span>
               )}
             </div>
           ))}
         </div>
+        {/* 尋物推算依據 */}
+        {facts.length > 0 && (
+          <div className="ask-timing">
+            <div className="xk-sec-head">推算依據（規則推算）</div>
+            {facts.map((x, i) => <div key={i} className="ask-timing-row">{x}</div>)}
+          </div>
+        )}
+        {/* 宮宮關係（五行 × 四害） */}
+        {relations.length > 0 && (
+          <div className="ask-timing">
+            <div className="xk-sec-head">宮位關係（五行生剋 × 四害強弱）</div>
+            {relations.map((x, i) => <div key={i} className="ask-timing-row">{x}</div>)}
+          </div>
+        )}
         {/* 應期線索 */}
         <div className="ask-timing">
           <div className="xk-sec-head">應期線索（規則推算）</div>
           {timing.map((x, i) => <div key={i} className="ask-timing-row">{x}</div>)}
         </div>
-        <button type="button" className="ai-btn" onClick={runAi} disabled={ai.loading || (qtype === '自訂' && !custom.trim())}>
+        <button type="button" className="ai-btn" onClick={runAi} disabled={ai.loading || (qtype === '自訂' && !custom.trim()) || (spec.custom2 && !customYs.some((c) => c.label.trim()))}>
           {ai.loading ? 'AI 解讀中…' : (ai.text ? `↻ 重新解讀（${qtype}，已存檔）` : `✨ AI 問事解讀：${qtype === '自訂' ? (custom.trim() || '自訂問題') : qtype}（含應期）`)}
         </button>
         {ai.error && <div className="ai-error">{ai.error}</div>}
@@ -889,7 +931,7 @@ function AskPanel({ result, chartKey, shiZhuPalace, shiGanPalace, querent }) {
             placeholder="追問：就這件事再問（例：具體在哪個月）…"
           />
         )}
-        <div className="sym-combo-note">（按問事類別自動取用用神並定位落宮，結合全盤符號、事主時干、伏吟反吟與空亡馬星，給出吉凶、走向、應期與趨避；可再追問。感情婚姻：對方取事主的天干五合合干，事主或對方宮見值符（甲）則兼看己宮情人，宮見乙丙丁主桃花、見己主好聽話桃花）</div>
+        <div className="sym-combo-note">（按問事類別自動取用用神並定位落宮，結合全盤符號、事主時干、伏吟反吟、宮宮生剋與四害強弱、空亡轉先天，給出吉凶、走向、應期與趨避；可再追問。尋物＝時干為物日干為事主；自選用神可自行指定符號與代表意義；感情婚姻：對方取事主的天干五合合干，事主或對方宮見值符（甲）則兼看己宮情人，宮見乙丙丁主桃花、見己主好聽話桃花）</div>
       </div>
     </details>
   );
@@ -1396,8 +1438,6 @@ export default function App() {
               </div>
             </div>
           </div>
-
-          <FindItemPanel result={result} chartKey={chartKey} />
 
           <AskPanel result={result} chartKey={chartKey} shiZhuPalace={shiZhuPalace} shiGanPalace={shiGanPalace} querent={querent} />
 
