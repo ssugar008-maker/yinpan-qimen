@@ -1,7 +1,8 @@
-// 驗證問事解讀／多輪追問／用量回傳：攔截 fetch，檢查送給 AI 的訊息結構與回應
+// 驗證問事解讀／多輪追問／用量回傳／感情婚姻合干取用：攔截 fetch，檢查送給 AI 的訊息結構與回應
 // 用法：node verify_ask.mjs
 import handler from './api/interpret.js';
 import { paipan } from './src/qimen/engine.js';
+import { shiZhuStem, loveYongShen, stemPalace } from './src/qimen/ask.js';
 
 process.env.AI_API_KEY = 'test-key';
 
@@ -56,6 +57,62 @@ const askPayload = {
 let pass = 0, fail = 0;
 const ok = (name, cond, got) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${got !== undefined ? ` → ${JSON.stringify(got)?.slice(0, 300)}` : ''}`); } };
 
+// ── 感情婚姻：合干取用（使用者指定規則，用其實例驗證）──
+console.log('\n[0] 感情婚姻用神（合干／值符甲己／桃花）');
+const noMarks = () => [];
+// 使用者實例：2026-05-28 01:22，日柱壬寅、月柱癸巳
+const loveChart = paipan(2026, 5, 28, 1, 22);
+ok('實例四柱正確（壬寅日、癸巳月）', loveChart.pillars[2] === '壬寅' && loveChart.pillars[1] === '癸巳', loveChart.pillars);
+// 遠程：開盤人男、問事人女（不同性別不換陰陽）→ 月干癸落震三宮
+const szRemote = shiZhuStem(loveChart, { mode: '遠程', caster: '男', querent: '女' });
+ok('遠程（男開女問）事主=癸 落震三宮', szRemote && szRemote.stem === '癸' && szRemote.palace === 3, szRemote);
+let rows = loveYongShen(loveChart, szRemote, loveChart.pillarMarkPalaces[3], noMarks);
+ok('遠程對方=戊（戊癸合）落兌七宮', rows[1] && rows[1].disp === '對方 戊' && rows[1].palace === 7, rows[1]);
+ok('遠程含六合與時干', rows.some((r) => r.disp === '六合') && rows.some((r) => r.disp.startsWith('時干')), rows.map((r) => r.disp));
+ok('值符不在事主/對方宮 → 無己情人列', !rows.some((r) => r.disp === '己'), rows.map((r) => r.disp));
+// 近程：日干壬落坤二宮，對方=丁（丁壬合）落巽四宮
+const szNear = shiZhuStem(loveChart, { mode: '近程', caster: '', querent: '' });
+ok('近程事主=壬 落坤二宮', szNear && szNear.stem === '壬' && szNear.palace === 2, szNear);
+rows = loveYongShen(loveChart, szNear, loveChart.pillarMarkPalaces[3], noMarks);
+ok('近程對方=丁（丁壬合）落巽四宮', rows[1] && rows[1].disp === '對方 丁' && rows[1].palace === 4, rows[1]);
+ok('事主宮見丙 → 桃花標註', rows[0].marks.some((m) => m.includes('見丙')), rows[0].marks);
+ok('對方宮見丁 → 桃花標註', rows[1].marks.some((m) => m.includes('見丁')), rows[1].marks);
+// 遠程同性別（女開女問）→ 月干癸換陰陽為壬 → 事主壬落坤二宮、對方丁
+const szSame = shiZhuStem(loveChart, { mode: '遠程', caster: '女', querent: '女' });
+ok('遠程同性別換陰陽：事主=壬 落坤二宮', szSame && szSame.stem === '壬' && szSame.palace === 2, szSame);
+// 遠程未設定性別 → 無事主，給提示列
+rows = loveYongShen(loveChart, shiZhuStem(loveChart, { mode: '遠程', caster: '', querent: '' }), null, noMarks);
+ok('遠程未設性別 → 提示列且無落宮', rows.length === 1 && rows[0].palace === null && rows[0].role.includes('性別'), rows[0]);
+// 值符為甲→甲己合：找一個對方宮見值符的盤，應出現己（情人）列
+let found = null;
+for (let d = 1; d <= 28 && !found; d++) for (const h of [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23]) {
+  const r0 = paipan(2026, 6, d, h, 0);
+  const sz = shiZhuStem(r0, { mode: '近程', caster: '', querent: '' });
+  if (!sz) continue;
+  const he = { 甲: '己', 己: '甲', 乙: '庚', 庚: '乙', 丙: '辛', 辛: '丙', 丁: '壬', 壬: '丁', 戊: '癸', 癸: '戊' }[sz.stem];
+  const heP = he === '甲' ? r0.zhiFu.palace : stemPalace(r0, he);
+  if (heP && heP === r0.zhiFu.palace && he !== '己' && sz.stem !== '己') { found = { r0, sz, he, heP, when: `6/${d} ${h}:00` }; break; }
+}
+ok('找到對方宮見值符的測試盤', !!found, null);
+if (found) {
+  const loveRows = loveYongShen(found.r0, found.sz, found.r0.pillarMarkPalaces[3], noMarks);
+  const jiRow = loveRows.find((r) => r.disp === '己');
+  ok(`對方宮見值符（${found.when}，事主${found.sz.stem}、對方${found.he}）→ 己情人列出現`, !!jiRow && jiRow.role.includes('甲己相合'), loveRows.map((r) => r.disp));
+  ok('己列落宮=己實際落宮', jiRow && jiRow.palace === stemPalace(found.r0, '己'), jiRow);
+}
+// 合干為甲 → 對方以值符論
+let jiaCase = null;
+for (let d = 1; d <= 28 && !jiaCase; d++) for (const h of [1, 7, 13, 19]) {
+  const r0 = paipan(2026, 7, d, h, 0);
+  const sz = shiZhuStem(r0, { mode: '近程', caster: '', querent: '' });
+  if (sz && sz.stem === '己') { jiaCase = { r0, sz }; break; }
+}
+if (jiaCase) {
+  const loveRows = loveYongShen(jiaCase.r0, jiaCase.sz, jiaCase.r0.pillarMarkPalaces[3], noMarks);
+  ok('事主為己 → 對方=甲（值符宮）', loveRows[1] && loveRows[1].disp === '對方 甲（值符）' && loveRows[1].palace === jiaCase.r0.zhiFu.palace, loveRows[1]);
+  ok('事主為己時不再重複列己', !loveRows.some((r) => r.disp === '己'), loveRows.map((r) => r.disp));
+}
+
 console.log('\n[1] 問事全盤解讀 prompt');
 let r = await call(askPayload);
 const prompt = r.msgs[1].content;
@@ -94,11 +151,19 @@ const longQ = '長'.repeat(600);
 r = await call({ ...askPayload, question: longQ });
 ok('追問截斷至 500 字', r.msgs.at(-1).content.length < 700, r.msgs.at(-1).content.length);
 
-console.log('\n[4] 問事錯誤處理');
+console.log('\n[4] 問事錯誤處理＋感情婚姻類別指引');
 r = await call({ task: 'qimenAsk', ask: { qtype: '自訂', custom: '', chart: {} } });
 ok('自訂無問題 → 400', r.status === 400 && r.json.error.includes('請輸入'), r.json);
 r = await call({ task: 'qimenAsk', ask: {} });
 ok('缺問事資料 → 400', r.status === 400, r.json);
+r = await call({
+  task: 'qimenAsk',
+  ask: { qtype: '感情婚姻', custom: '', chart: { pillars: [], dun: '陰', ju: 1 }, yongshen: [{ name: '對方 戊', role: '另一半（癸戊相合）', palace: '兌七宮', wx: '金', branches: '酉', marks: [], symbols: [] }], timing: [] },
+});
+ok('感情婚姻 prompt 含類別指引', r.msgs[1].content.includes('【類別指引】') && r.msgs[1].content.includes('天干五合') && r.msgs[1].content.includes('值符為甲'));
+ok('感情婚姻 prompt 含桃花規則', r.msgs[1].content.includes('見乙、丙、丁主易有桃花'));
+r = await call(askPayload);
+ok('求財不帶類別指引', !r.msgs[1].content.includes('【類別指引】'));
 
 console.log('\n[5] 玄空替卦 payload 進 prompt');
 r = await call({

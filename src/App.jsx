@@ -6,6 +6,7 @@ import { DOOR_INFO, STAR_INFO, GOD_INFO, STEM_INFO, PALACE_INFO, WUXING_SHENG, W
 import { useCloudStore } from './cloud.js';
 import { aiInterpret, AI_MODELS, getAiModelId, setAiModelId, getUsage } from './ai.js';
 import FollowUpChat from './FollowUp.jsx';
+import { shiZhuStem, loveYongShen } from './qimen/ask.js';
 
 // ---- 简体→繁体（本盘用到的字） ----
 const S2T = {
@@ -62,24 +63,10 @@ function Stem({ text, type }) {
   return <div className={`stem ${stemMarkClass(type)}`}>{t(text)}</div>;
 }
 
-// 換陰陽：同五行異陰陽（癸↔壬、庚↔辛、丙↔丁、戊↔己、乙↔甲）
-const YINYANG_SWAP = { 甲: '乙', 乙: '甲', 丙: '丁', 丁: '丙', 戊: '己', 己: '戊', 庚: '辛', 辛: '庚', 壬: '癸', 癸: '壬' };
-
-// 事主宮位：
-// 近程（求測人在現場）→ 直接以「日干」落天盤之宮為事主（不需性別）。
-// 遠程 → 開盤人看日干、問事人看月干；開盤人與問事人「不同性別」用月干直接落宮，
-//         「同性別」則月干換陰陽（同五行異陰陽，如癸→壬）後落宮。
+// 事主宮位：近程看日干、遠程看月干（同性別換陰陽），甲以值符論 —— 邏輯見 qimen/ask.js
 function computeShiZhu(result, querent) {
-  if (!result) return null;
-  if (querent.mode === '近程') return result.pillarMarkPalaces[2]; // 日干（甲遁旬首儀）落天盤之宮
-  if (!querent.caster || !querent.querent) return null; // 遠程需先設定開盤人與問事人性別
-  let stem = result.pillarStems[1]; // 月干（甲遁旬首儀）
-  if (querent.caster === querent.querent) stem = YINYANG_SWAP[stem]; // 同性別 → 換陰陽
-  if (stem === '甲') return result.zhiFu.palace; // 甲為旬首，以值符所落之宮論
-  for (const p of [1, 2, 3, 4, 6, 7, 8, 9]) {
-    if ((result.palaces[p].tianGan || []).includes(stem)) return p;
-  }
-  return null;
+  const r = shiZhuStem(result, querent);
+  return r ? r.palace : null;
 }
 
 // AI 解讀記錄：以「日期時間|宮位|主題」為 key 存檔（雲端同步＋本機快取）
@@ -693,13 +680,8 @@ const ASK_TYPES = [
     { kind: 'dayStem', role: '本人（事主）' },
     { kind: 'hourStem', role: '所問之事' },
   ] },
-  { id: '感情婚姻', ys: [
-    { kind: 'stem', name: '乙', role: '女方、妻子' },
-    { kind: 'stem', name: '庚', role: '男方、丈夫' },
-    { kind: 'god', name: '六合', role: '婚姻、媒合、感情關係' },
-    { kind: 'dayStem', role: '本人（事主）' },
-    { kind: 'hourStem', role: '這段感情／所問之事' },
-  ] },
+  // 感情婚姻：對方＝事主合干（天干五合），值符為甲→甲己合則己為另一伴/情人；邏輯見 qimen/ask.js
+  { id: '感情婚姻', love: true, ys: [] },
   { id: '疾病健康', ys: [
     { kind: 'star', name: '天芮', role: '疾病、病症' },
     { kind: 'stem', name: '乙', role: '醫藥、醫生' },
@@ -774,25 +756,33 @@ function yongShenDisp(spec, result) {
 }
 
 const ASK_KEY = 'qimen_ask_v1';
-function AskPanel({ result, chartKey, shiZhuPalace, shiGanPalace }) {
+function AskPanel({ result, chartKey, shiZhuPalace, shiGanPalace, querent }) {
   const [askLib, setAskLib] = useCloudStore('qimen_ask', ASK_KEY, {});
   const [qtype, setQtype] = useState('求財');
   const [custom, setCustom] = useState('');
   const [ai, setAi] = useState({ loading: false, text: '', error: '' });
-  const askKey = `${chartKey}|${qtype}|${qtype === '自訂' ? custom.trim() : ''}`;
+  // 感情婚姻的用神隨事主設定（近/遠程、性別）而變，存檔 key 需含事主簽名
+  const qSig = `${querent.mode}${querent.caster}${querent.querent}`;
+  const askKey = `${chartKey}|${qtype}|${qSig}|${qtype === '自訂' ? custom.trim() : ''}`;
   const entry = (v) => (typeof v === 'string' ? { text: v, thread: [] } : (v || null));
   useEffect(() => { setAi({ loading: false, text: (entry(askLib[askKey]) || {}).text || '', error: '' }); }, [askKey, askLib]);
 
   const fuFan = useMemo(() => detectFuFan(result), [result]);
-  // 用神落宮解析（含顯示名、宮位、狀態標記）
+  const shiZhu = useMemo(() => shiZhuStem(result, querent), [result, querent]);
+  // 用神落宮解析（含顯示名、宮位、狀態標記）；感情婚姻走合干取用（qimen/ask.js）
   const spec = ASK_TYPES.find((x) => x.id === qtype);
-  const resolved = useMemo(() => (spec ? spec.ys.map((s) => {
-    const palace = locateYongShen(s, result, shiZhuPalace);
-    return {
-      disp: yongShenDisp(s, result), role: s.role, palace,
-      marks: palace ? palaceMarkLabels(palace, result, shiZhuPalace, shiGanPalace) : [],
-    };
-  }) : []), [spec, result, shiZhuPalace, shiGanPalace]);
+  const resolved = useMemo(() => {
+    if (spec && spec.love) {
+      return loveYongShen(result, shiZhu, shiGanPalace, (pp) => palaceMarkLabels(pp, result, shiZhuPalace, shiGanPalace));
+    }
+    return spec ? spec.ys.map((s) => {
+      const palace = locateYongShen(s, result, shiZhuPalace);
+      return {
+        disp: yongShenDisp(s, result), role: s.role, palace,
+        marks: palace ? palaceMarkLabels(palace, result, shiZhuPalace, shiGanPalace) : [],
+      };
+    }) : [];
+  }, [spec, result, shiZhu, shiZhuPalace, shiGanPalace]);
 
   // 應期線索（規則推算，供顯示並送入 AI）
   const timing = useMemo(() => {
@@ -899,7 +889,7 @@ function AskPanel({ result, chartKey, shiZhuPalace, shiGanPalace }) {
             placeholder="追問：就這件事再問（例：具體在哪個月）…"
           />
         )}
-        <div className="sym-combo-note">（按問事類別自動取用用神並定位落宮，結合全盤符號、事主時干、伏吟反吟與空亡馬星，給出吉凶、走向、應期與趨避；可再追問）</div>
+        <div className="sym-combo-note">（按問事類別自動取用用神並定位落宮，結合全盤符號、事主時干、伏吟反吟與空亡馬星，給出吉凶、走向、應期與趨避；可再追問。感情婚姻：對方取事主的天干五合合干，事主或對方宮見值符（甲）則兼看己宮情人，宮見乙丙丁主桃花、見己主好聽話桃花）</div>
       </div>
     </details>
   );
@@ -953,8 +943,16 @@ export default function App() {
     }
   }, [submitted]);
 
-  // 問事設定：遠/近程 + 開盤人/問事人性別（皆可留空，開盤後隨時可補）
-  const [querent, setQuerent] = useState({ mode: '近程', caster: '', querent: '' });
+  // 問事設定：遠/近程 + 開盤人/問事人性別（皆可留空，開盤後隨時可補）；存本機，重整後保留（問事存檔 key 依此區分）
+  const QUERENT_KEY = 'mo_querent_v1';
+  const [querent, setQuerentState] = useState(() => {
+    try { const v = JSON.parse(localStorage.getItem(QUERENT_KEY)); return v && v.mode ? v : { mode: '近程', caster: '', querent: '' }; } catch { return { mode: '近程', caster: '', querent: '' }; }
+  });
+  const setQuerent = (q) => {
+    const next = typeof q === 'function' ? q(querent) : q;
+    try { localStorage.setItem(QUERENT_KEY, JSON.stringify(next)); } catch { }
+    setQuerentState(next);
+  };
   const shiZhuPalace = useMemo(() => computeShiZhu(result, querent), [result, querent]);
   const toggleGender = (key, val) => setQuerent((q) => ({ ...q, [key]: q[key] === val ? '' : val }));
   // 時干（時柱天干）落天盤之宮 → 標「時干」
@@ -1349,7 +1347,7 @@ export default function App() {
 
           <FindItemPanel result={result} chartKey={chartKey} />
 
-          <AskPanel result={result} chartKey={chartKey} shiZhuPalace={shiZhuPalace} shiGanPalace={shiGanPalace} />
+          <AskPanel result={result} chartKey={chartKey} shiZhuPalace={shiZhuPalace} shiGanPalace={shiGanPalace} querent={querent} />
 
           <details className="panel collapsible ai-hist-panel">
             <summary className="panel-head">AI 解讀記錄{aiLib.length ? `（${aiLib.length}）` : ''}<span className={`cloud-dot ${aiLibCloud ? 'on' : 'off'}`}>{aiLibCloud ? '雲端同步' : '本機'}</span></summary>

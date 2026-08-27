@@ -219,6 +219,10 @@ ${symLines}
 整體 320 字內，分點清楚。`;
 }
 
+// 奇門問事：類別專用解讀指引（用神已由前端按規則定位，這裡告訴 AI 該類別的斷法）
+const ASK_GUIDE = {
+  感情婚姻: '本類別取用規則（已按此定位，請依此解讀）：對方由事主的天干五合合干而定（甲己、乙庚、丙辛、丁壬、戊癸相合），不固定看乙庚；值符為甲，甲己相合，故事主宮或對方宮見值符時，己亦為另一伴或情人，需兼看己所落之宮（有則已附於用神列表）；宮中見乙、丙、丁主易有桃花，見己主有「好聽話」式的桃花（已標註於各宮狀態）。請分析事主宮與對方宮的旺衰、兩宮五行生剋比和、是否相合相生、有無門迫擊刑入墓空亡，以及有無第三者（情人）之象。',
+};
 // 奇門：問事全盤解讀（用神取用＋應期）
 // ask payload: { qtype, custom, chart{...}, yongshen[{name,role,palace,wx,branches,marks[],symbols[]}], timing[] }
 function qimenAskPrompt(d) {
@@ -230,7 +234,9 @@ function qimenAskPrompt(d) {
   }).join('\n');
   const timingLines = (d.timing || []).map((x) => `- ${x}`).join('\n');
   const isCustom = d.qtype === '自訂';
+  const guide = ASK_GUIDE[d.qtype] ? `\n【類別指引】${ASK_GUIDE[d.qtype]}\n` : '';
   return `以下是奇門遁甲陰盤時盤的「問事」全盤推算。問事類別：「${d.qtype}」${isCustom && d.custom ? `，使用者所問：「${d.custom}」` : ''}。
+${guide}
 
 【盤面事實】
 四柱：${(c.pillars || []).join('　')}（${c.dun}遁${c.ju}局）　旬首：${c.xunShou || ''}

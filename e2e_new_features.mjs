@@ -68,6 +68,43 @@ ok('輸入後按鈕啟用且帶問題', !askState.btnDisabled && askState.btnTex
 await page.evaluate(() => [...document.querySelectorAll('.ask-panel .ai-theme-chip')].find((b) => b.textContent === '求財').click());
 await sleep(150);
 
+// 感情婚姻：合干取用（預設盤 2026-05-16 11:38 近程，日干庚）
+console.log('\n[2b] 感情婚姻：對方＝事主合干');
+await page.evaluate(() => [...document.querySelectorAll('.ask-panel .ai-theme-chip')].find((b) => b.textContent === '感情婚姻').click());
+await sleep(200);
+const loveRows = async () => page.evaluate(() => [...document.querySelectorAll('.ask-ys-row')].map((r) => ({
+  name: r.querySelector('.ask-ys-name').textContent.trim(),
+  role: r.querySelector('.ask-ys-role').textContent.trim(),
+  palace: r.querySelector('.ask-ys-palace').textContent.trim(),
+  marks: [...r.querySelectorAll('.ask-mark')].map((m) => m.textContent.trim()),
+})));
+let rows = await loveRows();
+ok('近程事主=日干庚', rows[0].name === '事主 庚' && rows[0].palace.startsWith('落 '), rows[0]);
+ok('對方=乙（乙庚合），非固定乙庚取用', rows[1].name === '對方 乙' && rows[1].role.includes('庚乙相合') && rows[1].palace.startsWith('落 '), rows[1]);
+ok('含六合與時干列', rows.some((r) => r.name === '六合') && rows.some((r) => r.name.startsWith('時干')), rows.map((r) => r.name));
+// 切遠程（未設性別）→ 提示列
+await page.evaluate(() => [...document.querySelectorAll('.querent-bar .seg')][0].querySelectorAll('button')[1].click()); // 遠程
+await sleep(250);
+rows = await loveRows();
+ok('遠程未設性別 → 提示未落盤', rows.length === 1 && rows[0].palace === '未落盤' && rows[0].role.includes('性別'), rows);
+// 設定 開盤人男／問事人女（不同性別不換陰陽）→ 月干癸為事主、對方戊
+await page.evaluate(() => [...document.querySelectorAll('.querent-bar .seg')][1].querySelectorAll('button')[0].click()); // 開盤人 男
+await page.evaluate(() => [...document.querySelectorAll('.querent-bar .seg')][2].querySelectorAll('button')[1].click()); // 問事人 女
+await sleep(250);
+rows = await loveRows();
+ok('遠程男開女問 → 事主=癸', rows[0].name === '事主 癸' && rows[0].palace.startsWith('落 '), rows[0]);
+ok('對方=戊（戊癸合）', rows[1].name === '對方 戊' && rows[1].role.includes('癸戊相合'), rows[1]);
+// 同性別（女開女問）→ 癸換陰陽為壬、對方丁
+await page.evaluate(() => [...document.querySelectorAll('.querent-bar .seg')][1].querySelectorAll('button')[1].click()); // 開盤人 女
+await sleep(250);
+rows = await loveRows();
+ok('遠程同性別換陰陽 → 事主=壬、對方=丁', rows[0].name === '事主 壬' && rows[1].name === '對方 丁', rows.map((r) => r.name));
+// 還原：近程
+await page.evaluate(() => [...document.querySelectorAll('.querent-bar .seg')][0].querySelectorAll('button')[0].click());
+await sleep(200);
+await page.evaluate(() => [...document.querySelectorAll('.ask-panel .ai-theme-chip')].find((b) => b.textContent === '求財').click());
+await sleep(150);
+
 // 跑 AI 解讀（模擬）＋追問
 console.log('\n[3] 問事 AI 解讀＋多輪追問');
 await page.evaluate(() => document.querySelector('.ask-panel .ai-btn').click());
