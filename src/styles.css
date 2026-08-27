@@ -942,10 +942,20 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .fu-send:disabled { opacity: 0.6; cursor: default; }
 .fu-send:not(:disabled):hover { background: linear-gradient(135deg, #efe6fa, #e2d3f5); }
 
-/* AI 用量徽章 */
+/* AI 用量徽章＋餘額進度條 */
 .usage-badge {
   text-align: center; font-size: 11px; color: #9a86c0; margin: 2px 0 4px; cursor: help;
 }
+.usage-bal {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 11px; color: #9a86c0; margin: 0 0 4px; cursor: pointer;
+}
+.usage-bal.low { color: #dc2626; font-weight: 700; }
+.usage-bar {
+  display: inline-block; width: 90px; height: 8px; border-radius: 4px;
+  background: #eee5d5; overflow: hidden; vertical-align: middle;
+}
+.usage-bar-fill { display: block; height: 100%; border-radius: 4px; transition: width 0.4s; }
 
 /* 玄空：AI 分析（可點宮位 × 主題） */
 .xk-cell.pickable { cursor: pointer; }

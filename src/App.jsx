@@ -909,25 +909,77 @@ function ModelToggle() {
   );
 }
 
-// AI 用量徽章：本月呼叫次數與 token 數（本機累計，僅供參考；費用以 DeepSeek 官方為準）
+// AI 用量徽章：本月呼叫次數與 token 數（本機累計）＋ API 帳戶餘額進度條（/api/usage 查 DeepSeek 餘額）
+const BAL_REF_KEY = 'mo_ai_balance_ref'; // 充值總額參考（用於進度條比例；首次快照自動設定，可點按修改）
 function UsageBadge() {
   const [, force] = useState(0);
+  const [bal, setBal] = useState(null); // null=載入中；{supported:false}=服務商不支援；{supported:true,currency,total,...}
   useEffect(() => {
     const on = () => force((n) => n + 1);
     window.addEventListener('ai-usage', on);
     return () => window.removeEventListener('ai-usage', on);
   }, []);
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await fetch('/api/usage');
+        const d = await r.json().catch(() => null);
+        if (alive) setBal(d && d.supported ? d : { supported: false });
+      } catch { if (alive) setBal({ supported: false }); }
+    };
+    load();
+    const on = () => load(); // 每次 AI 呼叫後順便刷新餘額
+    window.addEventListener('ai-usage', on);
+    return () => { alive = false; window.removeEventListener('ai-usage', on); };
+  }, []);
   const month = new Date().toISOString().slice(0, 7);
   const cur = getUsage()[month] || {};
   const entries = AI_MODELS.map((m) => ({ label: m.label, ...(cur[m.id] || { calls: 0, pt: 0, ct: 0 }) }));
   const calls = entries.reduce((s, e) => s + e.calls, 0);
-  if (!calls) return null;
+  if (!calls && !(bal && bal.supported)) return null;
   const tok = (n) => (n >= 10000 ? `${(n / 10000).toFixed(1)}萬` : `${n}`);
   const tip = entries.map((e) => `${e.label}：${e.calls} 次，輸入 ${tok(e.pt)} / 輸出 ${tok(e.ct)} tokens`).join('\n') + '\n（本機統計僅供參考，費用以 DeepSeek 官方帳單為準）';
+
+  // 餘額進度條：參考總額取本機設定；首次或充值後（餘額高於參考）自動抬高為目前餘額
+  let balRow = null;
+  if (bal && bal.supported) {
+    const sym = bal.currency === 'USD' ? '$' : '¥';
+    let ref = 0;
+    try { ref = parseFloat(localStorage.getItem(BAL_REF_KEY)) || 0; } catch { }
+    if (bal.total > ref) { ref = bal.total; try { localStorage.setItem(BAL_REF_KEY, String(ref)); } catch { } }
+    const pct = ref > 0 ? Math.max(0, Math.min(100, (bal.total / ref) * 100)) : 0;
+    const low = pct <= 15, mid = !low && pct <= 40;
+    const editRef = () => {
+      const v = window.prompt('設定充值總額（用來計算剩餘比例）：', ref ? String(ref.toFixed(2)) : '');
+      if (v == null) return;
+      const n = parseFloat(v);
+      if (!isNaN(n) && n > 0) { try { localStorage.setItem(BAL_REF_KEY, String(n)); } catch { } force((x) => x + 1); }
+    };
+    balRow = (
+      <div
+        className={`usage-bal${low ? ' low' : ''}`}
+        role="button"
+        tabIndex={0}
+        onClick={editRef}
+        onKeyDown={(e) => { if (e.key === 'Enter') editRef(); }}
+        title={`API 帳戶餘額：剩餘 ${sym}${bal.total.toFixed(2)}（充值 ${sym}${bal.toppedUp.toFixed(2)}＋贈送 ${sym}${bal.granted.toFixed(2)}）\n進度條＝剩餘 ÷ 充值總額 ${sym}${ref.toFixed(2)}${low ? '\n⚠ 餘額偏低，該充值了' : ''}\n（點按可修改充值總額）`}
+      >
+        <span className="usage-bal-label">API 餘額 {sym}{bal.total.toFixed(2)}</span>
+        <span className="usage-bar"><span className="usage-bar-fill" style={{ width: `${pct}%`, background: low ? '#dc2626' : mid ? '#d97706' : '#7c5cbf' }} /></span>
+        <span className="usage-bal-ref">/ {sym}{ref.toFixed(2)}</span>
+      </div>
+    );
+  }
   return (
-    <div className="usage-badge" title={tip}>
-      本月 AI：{calls} 次 · {tok(entries.reduce((s, e) => s + e.pt + e.ct, 0))} tokens
-    </div>
+    <>
+      {calls > 0 && (
+        <div className="usage-badge" title={tip}>
+          本月 AI：{calls} 次 · {tok(entries.reduce((s, e) => s + e.pt + e.ct, 0))} tokens
+        </div>
+      )}
+      {balRow}
+    </>
   );
 }
 
