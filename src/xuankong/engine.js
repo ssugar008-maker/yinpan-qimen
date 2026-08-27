@@ -74,6 +74,38 @@ export function xuanKongChart(period, sitM, faceM) {
   return { period, sitM, faceM, pG, sG, fG, sitPalace, facePalace, sitCenter, faceCenter };
 }
 
+// ── 替卦（兼向起星）──────────────────────────────────────
+// 替星歌訣：子癸並甲申貪狼（1），壬卯乙未坤巨門（2），乾亥辰巽巳戌武曲（6），
+//           酉辛丑艮丙破軍（7），寅午庚丁右弼（9）。（3、4、5、8 不作替星）
+export const TI_GUA_STAR = {
+  子: 1, 癸: 1, 甲: 1, 申: 1,
+  壬: 2, 卯: 2, 乙: 2, 未: 2, 坤: 2,
+  乾: 6, 亥: 6, 辰: 6, 巽: 6, 巳: 6, 戌: 6,
+  酉: 7, 辛: 7, 丑: 7, 艮: 7, 丙: 7,
+  寅: 9, 午: 9, 庚: 9, 丁: 9,
+};
+// 各宮按元龍（天/地/人）索引山名
+const PALACE_YUAN_MOUNTAIN = {};
+MOUNTAINS24.forEach((m) => { (PALACE_YUAN_MOUNTAIN[m.palace] = PALACE_YUAN_MOUNTAIN[m.palace] || {})[m.yuan] = m; });
+// 兼向替星：入中星 star 之本宮，取與坐/向山同元龍之山，以該山替星入中，順逆看該山陰陽。
+// 五黃入中無山可替，仍以 5 入中，順逆看坐/向山本身陰陽（同下卦）。
+function tiGuaCenter(star, mountain) {
+  if (star === 5) return { star: 5, forward: MOUNTAIN[mountain].yang === 1, orig: 5, via: null };
+  const via = PALACE_YUAN_MOUNTAIN[star][MOUNTAIN[mountain].yuan]; // 星之本宮 = 洛書宮數
+  return { star: TI_GUA_STAR[via.n], forward: via.yang === 1, orig: star, via: via.n };
+}
+// 玄空飛星替卦盤：兼向時用（度數近兩山交界）
+export function xuanKongChartTiGua(period, sitM, faceM) {
+  const pG = periodChart(period);
+  const sitPalace = MOUNTAIN[sitM].palace;
+  const facePalace = MOUNTAIN[faceM].palace;
+  const sit = tiGuaCenter(pG[sitPalace], sitM);
+  const face = tiGuaCenter(pG[facePalace], faceM);
+  const sG = fly(sit.star, sit.forward);
+  const fG = fly(face.star, face.forward);
+  return { period, sitM, faceM, pG, sG, fG, sitPalace, facePalace, sitCenter: sit.star, faceCenter: face.star, tiGua: { sit, face } };
+}
+
 const OUTER = [1, 2, 3, 4, 6, 7, 8, 9];
 // 格局判定
 export function chartTypes(chart) {
