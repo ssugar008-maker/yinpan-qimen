@@ -713,6 +713,8 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .month-table th { background: #f3eddd; color: var(--accent); font-weight: 700; }
 .month-table .m-branch { font-weight: 700; }
 .month-table tr.cur-month td { background: #eaf4ea; color: var(--green); font-weight: 700; }
+.moon-big { display: inline-block; padding: 1px 8px; border-radius: 10px; background: #eaf4ea; color: var(--green); font-weight: 700; font-size: 12px; }
+.moon-small { display: inline-block; padding: 1px 8px; border-radius: 10px; background: #fdf0e6; color: #b8860b; font-weight: 700; font-size: 12px; }
 .month-note { margin-top: 12px; font-size: 12px; color: #8a8073; line-height: 1.7; }
 
 /* ── 九宮飛星 ── */
