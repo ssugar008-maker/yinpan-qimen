@@ -629,6 +629,13 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
   .xk details.collapsible > summary.panel-head::after { display: block; }
 }
 
+/* 玄空工作區：寬屏三欄同時顯示（排盤／室內平面圖／AI），手機直排 */
+.xk-workspace { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 1000px) {
+  .xk-workspace { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .xk-workspace .panel, .xk-workspace details.panel { margin-bottom: 0; }
+}
+
 @media (max-width: 640px) {
   .page { padding: 10px 8px 44px; }
   .title { font-size: 19px; letter-spacing: 2px; margin: 4px 0 10px; }
@@ -879,6 +886,10 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .xk-pal.top { font-size: 11px; color: #8a8073; }
 .xk-combo-stars2 { font-size: 11px; color: #a89a86; }
 .xk-combo-name { font-size: 13px; font-weight: 700; line-height: 1.15; }
+.xk-combo-s24 { display: flex; justify-content: center; gap: 4px; font-size: 10px; font-weight: 700; margin-top: 1px; }
+.xk-combo-s24 span { line-height: 1; }
+.xk-door-select { padding: 7px 10px; border: 1px solid #cbb98f; border-radius: 8px; font-size: 13px; background: #fff; font-weight: 700; color: #5a4a2f; }
+.xk-door-info { font-size: 12px; color: #8b5a2b; font-weight: 600; align-self: center; }
 .xk-combo-t { font-size: 11px; font-weight: 600; }
 .xk-curelist { margin-top: 12px; }
 .xk-cure-row { font-size: 13px; padding: 6px 10px; background: #fff; border: 1px solid #eee5d5; border-radius: 6px; margin-bottom: 6px; line-height: 1.6; }

@@ -10,6 +10,7 @@ import { aiInterpret } from '../ai.js';
 import FollowUpChat from '../FollowUp.jsx';
 import TianXingAnalysis from '../tianxing/TianXingAnalysis.jsx';
 import IndoorQuickView from '../indoor/IndoorQuickView.jsx';
+import { star24Map, STAR24_INFO, PALACE_MOUNTAINS24, analyze24 } from '../tianxing/stars24.js';
 
 // AI 分析主題（與 api/interpret.js 的 XK_THEMES 對應；「綜合」＝原有整體解讀，「自訂」＝自由提問）
 const XK_AI_THEMES = ['綜合', '傢俬擺設', '顏色', '形狀材質', '風水擺設', '房間用途', '財運', '健康', '感情桃花', '事業文昌', '化解催旺', '自訂'];
@@ -93,6 +94,17 @@ export default function XuanKong() {
   const gua = useMemo(() => lifeGua(+birthYear, gender), [birthYear, gender]);
   const bz = useMemo(() => bazhai(gua), [gua]);
 
+  // 24 天星盤（依坐山起盤），並整理出每宮三山的天星
+  const starMap = useMemo(() => star24Map(sitM), [sitM]);
+  const s24 = useMemo(() => analyze24(sitM, faceM), [sitM, faceM]);
+  const palaceStars24 = useMemo(() => {
+    const out = {};
+    GRID.forEach((p) => {
+      out[p] = (PALACE_MOUNTAINS24[p] || []).map((m) => ({ mountain: m, star: starMap[m], ...(STAR24_INFO[starMap[m]] || {}) }));
+    });
+    return out;
+  }, [starMap]);
+
   const years = []; for (let y = 1900; y <= 2099; y++) years.push(y);
 
   // 度數輸入 → 自動定山向
@@ -121,6 +133,8 @@ export default function XuanKong() {
   const [aiTheme, setAiTheme] = useState('綜合');
   const [aiCustom, setAiCustom] = useState('');
   const [aiContext, setAiContext] = useState('');
+  const [aiSystem, setAiSystem] = useState('both'); // 分析體系：both 玄空+天星 / xk 單玄空 / s24 單天星
+  const [doorM, setDoorM] = useState(''); // 大門所在山（納氣口）
   const aiPanelRef = useRef(null);
   // 替卦起星說明（兼向時顯示並送入 AI）
   const tiGuaNote = chart.tiGua
@@ -140,14 +154,15 @@ export default function XuanKong() {
         yun: chart.pG[p], yunName: STAR_NAME[chart.pG[p]],
         flow: flow[p], flowName: STAR_NAME[flow[p]],
         combo: c.n, ji: c.t, comboDesc: c.d, remedy: remedyText(c.r),
+        stars24: (palaceStars24[p] || []).map((x) => `${x.mountain}山${x.star}（${x.ji}）`).join('、'),
       };
     }),
-  }), [sitM, faceM, period, flowYear, flowStar, qiXing, tiGuaNote, types, chart, flow]);
+  }), [sitM, faceM, period, flowYear, flowStar, qiXing, tiGuaNote, types, chart, flow, palaceStars24]);
 
   // 存檔 key 含起星方式＋範圍＋主題＋自訂問題＋情境，問法不同各自存一份
   const chartKey = `${sitM}${faceM}|${period}|${flowYear}`;
   const customQ = aiCustom.trim(), ctxQ = aiContext.trim();
-  const aiKey = `${chartKey}|${qiXing}|${aiScope}|${aiTheme}|${aiTheme === '自訂' ? customQ : ''}|${ctxQ}`;
+  const aiKey = `${chartKey}|${qiXing}|${aiSystem}|${doorM}|${aiScope}|${aiTheme}|${aiTheme === '自訂' ? customQ : ''}|${ctxQ}`;
   const libEntry = (v) => (typeof v === 'string' ? { text: v } : (v || null));
   const [xkAi, setXkAi] = useState({ loading: false, text: '', error: '' });
   useEffect(() => {
@@ -158,6 +173,17 @@ export default function XuanKong() {
     setXkAi((prev) => (prev.loading ? prev : { loading: false, text, error: '' })); // 分析中不被雲端同步打斷
   }, [aiKey, xkAiLib]);
   const isOverall = aiScope === '整體';
+  // 八宅命卦各方吉凶（AI 用）
+  const bazhaiDirs = useMemo(() => GRID.filter((p) => p !== 5).map((p) => ({ name: PALACE_GUA[p], dir: PALACE_DIR[p], star: bz[p] && bz[p].star, ji: bz[p] && bz[p].ji })), [bz]);
+  // 大門（納氣口）資訊：所在山 → 陰陽氣、宮位、天星
+  const doorInfo = useMemo(() => {
+    if (!doorM) return null;
+    const dm = MOUNTAINS24.find((m) => m.n === doorM);
+    if (!dm) return null;
+    const star = starMap[doorM];
+    const sinfo = STAR24_INFO[star] || {};
+    return { mountain: doorM, yang: dm.yang ? '陽' : '陰', palace: PALACE_GUA[dm.palace], dir: PALACE_DIR[dm.palace], star24: star, star24ji: sinfo.ji, star24governs: sinfo.governs };
+  }, [doorM, starMap]);
   const xkBasePayload = {
     task: isOverall ? 'xkOverall' : 'xkPalace',
     chart: chartPayload,
@@ -165,6 +191,10 @@ export default function XuanKong() {
     theme: aiTheme,
     custom: aiTheme === '自訂' ? customQ : '',
     context: ctxQ,
+    system: aiSystem,
+    door: doorInfo,
+    bazhai: { gua, guaName: GUA_NAME[gua], east4: EAST4.includes(gua), dirs: bazhaiDirs },
+    star24: { sit: sitM, face: faceM, sitStar: s24.sitStar, faceStar: s24.faceStar, stars: s24.rows.map((r) => ({ mountain: r.mountain, dir: r.dir, palace: r.palace, palaceWx: r.palaceWx, star: r.star, ji: r.ji, wx: r.wx, group: r.group, governs: r.governs })) },
   };
   const runXkAi = async () => {
     setXkAi({ loading: true, text: '', error: '' });
@@ -224,6 +254,8 @@ export default function XuanKong() {
 
   return (
     <div className="xk">
+      {/* 工作區：排盤 ＋ 室內平面圖 ＋ AI（寬屏三欄同時顯示，手機直排） */}
+      <div className="xk-workspace">
       {/* 排盤輸入 */}
       <div className="panel">
         <div className="panel-head">玄空飛星排盤（{qiXing}）</div>
@@ -318,6 +350,24 @@ export default function XuanKong() {
         <div className="panel-head">AI 風水分析（任一宮位 × 任何主題）</div>
         <div className="panel-body">
           <div className="ai-theme-row">
+            <span className="ai-theme-label">分析體系</span>
+            <div className="ai-theme-chips">
+              {[['both', '玄空＋天星'], ['xk', '單玄空'], ['s24', '單天星']].map(([v, l]) => (
+                <button key={v} type="button" className={`ai-theme-chip${aiSystem === v ? ' active' : ''}`} onClick={() => setAiSystem(v)}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <div className="ai-theme-row">
+            <span className="ai-theme-label">大門方向</span>
+            <div className="ai-theme-chips">
+              <select value={doorM} onChange={(e) => setDoorM(e.target.value)} className="xk-door-select">
+                <option value="">未設定（不納入分析）</option>
+                {MOUNTAINS24.map((m) => <option key={m.n} value={m.n}>{m.n}山（{m.yang ? '陽' : '陰'}）</option>)}
+              </select>
+              {doorInfo && <span className="xk-door-info">大門在{doorInfo.mountain}山・{doorInfo.dir}，納{doorInfo.yang}氣{doorInfo.star24 ? `，天星「${doorInfo.star24}」（${doorInfo.star24ji}）` : ''}</span>}
+            </div>
+          </div>
+          <div className="ai-theme-row">
             <span className="ai-theme-label">分析範圍</span>
             <div className="ai-theme-chips">
               {AI_SCOPES.map((s) => (
@@ -391,6 +441,7 @@ export default function XuanKong() {
           <div className="sym-combo-note">（可先點上方九宮格任一宮，再選主題；主題涵蓋傢俬擺設、顏色、形狀材質、風水擺設、房間用途、財運、健康、感情桃花、事業文昌、化解催旺，或用「自訂」直接問。AI 會結合格局、山向星、五行生剋與流年作答）</div>
         </div>
       </div>
+      </div>{/* /xk-workspace */}
 
       {/* 星曜組合：九宮格排盤 */}
       <details className="panel collapsible" open>
@@ -411,6 +462,13 @@ export default function XuanKong() {
                 <div className="xk-combo-stars2">山{chart.sG[p]} 向{chart.fG[p]} 流{flow[p]}</div>
                 <div className="xk-combo-name" style={{ color: pairColor(combo.t) }}>{combo.n}</div>
                 <div className="xk-combo-t" style={{ color: pairColor(combo.t) }}>{combo.t}</div>
+                {p !== 5 && palaceStars24[p] && palaceStars24[p].length > 0 && (
+                  <div className="xk-combo-s24" title="二十四天星（此宮三山）">
+                    {palaceStars24[p].map((x) => (
+                      <span key={x.mountain} style={{ color: x.ji === '吉' ? '#16a34a' : x.ji === '大凶' ? '#7f1d1d' : '#dc2626' }}>{x.star}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
