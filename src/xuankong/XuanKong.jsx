@@ -135,6 +135,7 @@ export default function XuanKong() {
   const [aiContext, setAiContext] = useState('');
   const [aiSystem, setAiSystem] = useState('both'); // 分析體系：both 玄空+天星 / xk 單玄空 / s24 單天星
   const [doorM, setDoorM] = useState(''); // 大門所在山（納氣口）
+  const [showPlan, setShowPlan] = useState(false); // 室內平面圖浮層
   const aiPanelRef = useRef(null);
   // 替卦起星說明（兼向時顯示並送入 AI）
   const tiGuaNote = chart.tiGua
@@ -336,14 +337,6 @@ export default function XuanKong() {
           </div>
         </div>
       </div>
-
-      {/* 室內平面圖＋羅盤速覽（唯讀，方便邊看邊問） */}
-      <details className="panel collapsible" open>
-        <summary className="panel-head">室內平面圖＋羅盤速覽</summary>
-        <div className="panel-body">
-          <IndoorQuickView />
-        </div>
-      </details>
 
       {/* AI 風水分析：範圍（整體／任一宮）× 主題（傢俬、顏色、形狀材質…／自訂問題） */}
       <div className="panel" ref={aiPanelRef}>
@@ -589,6 +582,20 @@ export default function XuanKong() {
           <TianXingAnalysis sitM={sitM} faceM={faceM} />
         </div>
       </details>
+
+      {/* 室內平面圖浮層（按需查看，不佔版面） */}
+      <button type="button" className="xk-plan-fab" onClick={() => setShowPlan(true)} title="查看室內平面圖＋羅盤">🗺 平面圖</button>
+      {showPlan && (
+        <div className="xk-plan-overlay" onClick={() => setShowPlan(false)}>
+          <div className="xk-plan-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="xk-plan-head">
+              <span>室內平面圖＋羅盤{sitM ? `（坐${sitM}山・向${faceM}）` : ''}</span>
+              <button type="button" className="xk-plan-close" onClick={() => setShowPlan(false)}>✕</button>
+            </div>
+            <div className="xk-plan-body"><IndoorQuickView /></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

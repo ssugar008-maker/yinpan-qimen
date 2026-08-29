@@ -629,12 +629,38 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
   .xk details.collapsible > summary.panel-head::after { display: block; }
 }
 
-/* 玄空工作區：寬屏三欄同時顯示（排盤／室內平面圖／AI），手機直排 */
+/* 玄空工作區：寬屏兩欄同時顯示（排盤／AI），手機直排；室內平面圖用浮層按需查看 */
 .xk-workspace { display: grid; grid-template-columns: 1fr; gap: 12px; }
-@media (min-width: 1000px) {
-  .xk-workspace { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) {
+  .xk-workspace { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: start; }
   .xk-workspace .panel, .xk-workspace details.panel { margin-bottom: 0; }
 }
+
+/* 玄空：室內平面圖浮層（FAB＋modal） */
+.xk-plan-fab {
+  position: fixed; right: 16px; bottom: 18px; z-index: 60;
+  padding: 11px 16px; border-radius: 24px; border: none;
+  background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25); cursor: pointer;
+}
+.xk-plan-overlay {
+  position: fixed; inset: 0; z-index: 70; background: rgba(20,16,8,0.55);
+  display: flex; align-items: center; justify-content: center; padding: 12px;
+}
+.xk-plan-modal {
+  background: #fbf8f1; border-radius: 14px; width: 100%; max-width: 720px; max-height: 92vh;
+  display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+}
+.xk-plan-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; font-weight: 800; color: var(--accent); border-bottom: 1px solid #e8dfc8;
+}
+.xk-plan-close { border: none; background: #eee5d5; border-radius: 8px; width: 30px; height: 30px; font-size: 15px; cursor: pointer; color: #5a4a2f; }
+.xk-plan-body { overflow: auto; padding: 10px; }
+.xk-plan-body .indoor-canvas-wrap.qv { height: 62vh; }
+
+/* AI 結果：限高＋內部滾動＋自動換行，避免長文把頁面拖太長或撐太寬 */
+.ai-result { max-height: 340px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; line-height: 1.7; }
 
 @media (max-width: 640px) {
   .page { padding: 10px 8px 44px; }
