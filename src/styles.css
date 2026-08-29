@@ -1007,6 +1007,57 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .xk-ai-hist-theme { font-size: 10px; font-weight: 700; color: #fff; background: #9a86c0; padding: 1px 7px; border-radius: 9px; flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xk-ai-hist-text { color: #8a8073; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ── 二十四天星 ── */
+.tx-ring-wrap { display: flex; justify-content: center; margin: 8px 0 10px; }
+.tx-ring-wrap .star-ring { max-width: 92vw; height: auto; }
+.tx-duty-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; }
+.tx-duty {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  background: #fff; border: 1px solid #eee5d5; border-radius: 8px; padding: 7px 4px;
+}
+.tx-duty-key { font-size: 11px; color: #8a8073; font-weight: 600; }
+.tx-duty-star { font-size: 15px; font-weight: 800; color: #16a34a; }
+.tx-duty-at { font-size: 11px; color: #6a5f4f; }
+.tx-rel-list { margin-bottom: 8px; }
+.tx-rel-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; padding: 4px 10px; background: #fff; border: 1px solid #eee5d5; border-radius: 6px; margin-bottom: 4px;
+}
+.tx-rel-star { font-weight: 700; flex: none; }
+.tx-rel-pal { color: #8a8073; }
+.tx-rel-tag { margin-left: auto; font-size: 11px; font-weight: 700; color: #8a8073; }
+.tx-rel-tag.good { color: #16a34a; }
+.tx-rel-tag.bad { color: #dc2626; }
+
+/* 平面圖立極尺 */
+.fp-upload {
+  border: 2px dashed #d8cbb2; border-radius: 10px; padding: 28px 14px; text-align: center;
+  cursor: pointer; background: #fdfbf6;
+}
+.fp-upload:hover { border-color: #c9b6e4; background: #faf7fd; }
+.fp-upload-text { font-size: 14px; font-weight: 700; color: #6a5f4f; }
+.fp-upload-sub { font-size: 12px; color: #a89a86; margin-top: 6px; line-height: 1.6; }
+.fp-stage {
+  position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 10px;
+  background: #fff; touch-action: none;
+}
+.fp-img { display: block; width: 100%; height: auto; user-select: none; }
+.fp-ring {
+  position: absolute; left: 50%; top: 50%; cursor: grab; user-select: none;
+  transform-origin: center;
+}
+.fp-ring:active { cursor: grabbing; }
+.fp-ring .star-ring { pointer-events: none; display: block; }
+.fp-controls { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
+.fp-controls label { flex: 1; min-width: 140px; font-size: 12px; color: #6a5f4f; font-weight: 600; }
+.fp-controls input[type="range"] { width: 100%; margin-top: 3px; }
+.fp-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.fp-actions .btn { flex: 1; min-width: 100px; }
+
+@media (max-width: 640px) {
+  .tx-duty-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
 /* 玄空：八宅命卦九宮格 */
 .bazhai-grid .xk-cell { min-height: 74px; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
 .bazhai-cell.good { background: #eaf4ea; border-color: #b7d8b7; }
