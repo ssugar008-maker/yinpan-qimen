@@ -2,6 +2,7 @@ import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react'
 import { Solar } from 'lunar-javascript';
 import { paipan } from './qimen/engine.js';
 import XuanKong from './xuankong/XuanKong.jsx';
+import TianXing from './tianxing/TianXing.jsx';
 import { DOOR_INFO, STAR_INFO, GOD_INFO, STEM_INFO, PALACE_INFO, WUXING_SHENG, WUXING_KE } from './qimen/symbols.js';
 import { useCloudStore } from './cloud.js';
 import { aiInterpret, AI_MODELS, getAiModelId, setAiModelId, getUsage } from './ai.js';
@@ -1264,7 +1265,7 @@ export default function App() {
   return (
     <div className="page">
       <h1 className="title">MO易學</h1>
-      <div className="subtitle">陰盤奇門 · 九宮飛星 · 玄空飛星</div>
+      <div className="subtitle">陰盤奇門 · 九宮飛星 · 玄空飛星 · 二十四天星</div>
       <ModelToggle />
       <UsageBadge />
 
@@ -1273,11 +1274,13 @@ export default function App() {
         <button type="button" className={`tab${tab === 'months' ? ' active' : ''}`} onClick={() => setTab('months')}>月份時間</button>
         <button type="button" className={`tab${tab === 'stars' ? ' active' : ''}`} onClick={() => setTab('stars')}>九宮飛星</button>
         <button type="button" className={`tab${tab === 'xuankong' ? ' active' : ''}`} onClick={() => setTab('xuankong')}>玄空飛星</button>
+        <button type="button" className={`tab${tab === 'tianxing' ? ' active' : ''}`} onClick={() => setTab('tianxing')}>二十四天星</button>
       </div>
 
       {tab === 'months' && <MonthsPanel />}
       {tab === 'stars' && <StarsPanel />}
       {tab === 'xuankong' && <XuanKong />}
+      {tab === 'tianxing' && <TianXing />}
 
       {tab === 'chart' && (<>
       <details className="panel collapsible" open={!isMobile}>
