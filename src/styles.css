@@ -1119,6 +1119,8 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .indoor-canvas-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; user-select: none; -webkit-user-select: none; pointer-events: none; }
 .indoor-canvas-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; display: block; }
 @media (min-width: 768px) { .indoor-canvas-wrap { height: 74vh; } }
+.indoor-canvas-wrap.qv { height: 46vh; }
+@media (min-width: 768px) { .indoor-canvas-wrap.qv { height: 56vh; } }
 .indoor-gear {
   position: absolute; top: 8px; right: 8px; z-index: 30;
   padding: 7px 12px; border-radius: 20px; border: 1px solid #cbb98f;

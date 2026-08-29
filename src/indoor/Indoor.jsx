@@ -3,7 +3,8 @@ import {
   MOUNTAINS24, TRIGRAMS8, mountainAt, norm360, screenAngle, polar, resolveCenter,
 } from './geometry.js';
 import { analyzeFloorplan } from './analyze.js';
-import { star24Map, STAR24_INFO } from '../tianxing/stars24.js';
+import { star24Map } from '../tianxing/stars24.js';
+import CompassOverlay, { HaloText } from './CompassOverlay.jsx';
 
 const STORE_KEY = 'mo_indoor_v1';
 
@@ -17,15 +18,6 @@ const CENTER_METHODS = [
 
 function loadStore() {
   try { const raw = localStorage.getItem(STORE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
-}
-
-// Text with a white halo so it stays readable over any floor-plan colours.
-function HaloText({ x, y, size, fill, weight = 700, children }) {
-  return (
-    <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize={size}
-      fontWeight={weight} fill={fill} stroke="#ffffff" strokeWidth={size * 0.22}
-      paintOrder="stroke" style={{ strokeLinejoin: 'round' }}>{children}</text>
-  );
 }
 
 function compressImage(file, cb) {
@@ -74,11 +66,13 @@ export default function Indoor({ onGotoXuanKong }) {
     analyzeFloorplan(img, setAuto);
   }, [img]);
 
-  // persist
+  // persist（合併寫入，保留 center/facingDeg 等由另一 effect 儲存的欄位）
   useEffect(() => {
     try {
+      const raw = localStorage.getItem(STORE_KEY);
+      const obj = raw ? JSON.parse(raw) : {};
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        img, pins, centerMethod, manualCenter, refLine, refDegree, rot, decl,
+        ...obj, img, pins, centerMethod, manualCenter, refLine, refDegree, rot, decl,
         showCompass, opacity, compassSize, layers,
       }));
     } catch {}
@@ -201,7 +195,15 @@ export default function Indoor({ onGotoXuanKong }) {
   const sitM = sittingDeg != null ? mountainAt(sittingDeg) : null;
   // 24 天星盤（依校準後的坐山起盤）
   const star24 = sitM ? star24Map(sitM.c) : null;
-  const star24Color = (ji) => (ji === '吉' ? '#16a34a' : ji === '大凶' ? '#7f1d1d' : '#dc2626');
+
+  // persist computed centre + facing so the 玄空 quick-view can render without re-detecting
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      const obj = raw ? JSON.parse(raw) : {};
+      localStorage.setItem(STORE_KEY, JSON.stringify({ ...obj, center, facingDeg }));
+    } catch {}
+  }, [center, facingDeg]);
 
   const applyToXuanKong = () => {
     if (facingDeg == null) return;
@@ -284,67 +286,10 @@ export default function Indoor({ onGotoXuanKong }) {
                 <path d={polyPath} fill="none" stroke="rgba(60,120,255,0.95)" strokeWidth={unit * 0.007} />
               )}
 
-              {showCompass && center && (
-                <g opacity={opacity}>
-                  {/* extension lines radiating to the label ring, so each mountain lands at its label */}
-                  {layers.extend && MOUNTAINS24.map((m) => {
-                    const sa = norm360(m.deg + rot);
-                    const b = polar(center.x, center.y, Rline, sa);
-                    const isCardinal = m.deg % 45 === 0;
-                    return <line key={'ex' + m.c} x1={center.x} y1={center.y} x2={b.x} y2={b.y}
-                      stroke={isCardinal ? 'rgba(200,40,40,0.45)' : 'rgba(40,80,200,0.3)'}
-                      strokeWidth={unit * (isCardinal ? 0.0045 : 0.0028)} />;
-                  })}
-                  {/* faint outer ring tying the labels together */}
-                  <circle cx={center.x} cy={center.y} r={Rout} fill="none" stroke="rgba(30,60,180,0.4)" strokeWidth={unit * 0.004} />
-                  {/* 24 mountain names at the tip of each extension line */}
-                  {layers.mountains && MOUNTAINS24.map((m) => {
-                    const sa = norm360(m.deg + rot);
-                    const p = polar(center.x, center.y, Rout, sa);
-                    return <HaloText key={'mt' + m.c} x={p.x} y={p.y} size={mtFont} fill="#12245e">{m.c}</HaloText>;
-                  })}
-                  {/* 8 trigrams as text names on an inner ring */}
-                  {layers.trigrams && TRIGRAMS8.map((t) => {
-                    const sa = norm360(t.deg + rot);
-                    const p = polar(center.x, center.y, Rout * 0.6, sa);
-                    return <HaloText key={'tg' + t.c} x={p.x} y={p.y} size={tgFont} fill="#7a2a8f">{t.c}</HaloText>;
-                  })}
-                  {/* 24 天星（依校準坐山起盤，吉凶著色） */}
-                  {layers.stars24 && star24 && MOUNTAINS24.map((m) => {
-                    const star = star24[m.c];
-                    const info = STAR24_INFO[star] || {};
-                    const sa = norm360(m.deg + rot);
-                    const p = polar(center.x, center.y, Rout * 0.8, sa);
-                    return <HaloText key={'s24' + m.c} x={p.x} y={p.y} size={mtFont * 0.78} fill={star24Color(info.ji)}>{star}</HaloText>;
-                  })}
-                  {/* optional degree numbers just inside the labels */}
-                  {layers.degrees && MOUNTAINS24.map((m) => {
-                    const sa = norm360(m.deg + rot);
-                    const p = polar(center.x, center.y, Rout * 0.88, sa);
-                    return <HaloText key={'dg' + m.c} x={p.x} y={p.y} size={unit * 0.028} fill="#555" weight={400}>{m.deg}°</HaloText>;
-                  })}
-                  {facingDeg != null && (() => {
-                    const fa = norm360(facingDeg + rot);
-                    const tip = polar(center.x, center.y, Rline, fa);
-                    const bk = polar(center.x, center.y, Rout * 0.6, norm360(fa + 180));
-                    return (
-                      <g>
-                        <line x1={center.x} y1={center.y} x2={tip.x} y2={tip.y} stroke="#d21f1f" strokeWidth={unit * 0.011} markerEnd="url(#indArrow)" />
-                        <line x1={center.x} y1={center.y} x2={bk.x} y2={bk.y} stroke="#1a7a1a" strokeWidth={unit * 0.007} strokeDasharray={`${unit * 0.02} ${unit * 0.015}`} />
-                      </g>
-                    );
-                  })()}
-                  <line x1={center.x - unit * 0.04} y1={center.y} x2={center.x + unit * 0.04} y2={center.y} stroke="#d21f1f" strokeWidth={unit * 0.006} />
-                  <line x1={center.x} y1={center.y - unit * 0.04} x2={center.x} y2={center.y + unit * 0.04} stroke="#d21f1f" strokeWidth={unit * 0.006} />
-                  <circle cx={center.x} cy={center.y} r={unit * 0.012} fill="#d21f1f" />
-                </g>
+              {showCompass && (
+                <CompassOverlay center={center} rot={rot} facingDeg={facingDeg} layers={layers}
+                  unit={unit} Rout={Rout} Rline={Rline} mtFont={mtFont} tgFont={tgFont} star24={star24} opacity={opacity} />
               )}
-
-              <defs>
-                <marker id="indArrow" markerWidth="12" markerHeight="12" refX="7" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-                  <path d="M0,0 L7,3.5 L0,7 Z" fill="#d21f1f" />
-                </marker>
-              </defs>
 
               {/* A→B reference line (only while setting 坐向) */}
               {refLine && mode === 'ref' && (() => {
