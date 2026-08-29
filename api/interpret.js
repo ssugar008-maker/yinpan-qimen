@@ -87,25 +87,33 @@ function xkHead(c, scope) {
   const head = `【全盤】玄空飛星（${c.qiXing === '替卦' ? '替卦' : '下卦'}）陽宅盤：${c.sit}山${c.face}向，${c.period}運${c.flowYear ? `，${c.flowYear}年流年（${c.flowStar}入中）` : ''}${c.qiXing === '替卦' && c.tiGuaNote ? `\n替卦起星：${c.tiGuaNote}` : ''}
 格局：${types}`;
   if (!scope || scope === '整體') {
-    const per = c.palaces.map((p) => `${p.name}宮（${p.dir}）：山${p.shan} 向${p.xiang} 運${p.yun}${p.flow ? ` 流年${p.flow}` : ''}｜${p.combo}（${p.ji}）`).join('\n');
-    return `${head}\n【各宮山星／向星／運星${c.flowYear ? '／流年星' : ''}及星曜組合】\n${per}`;
+    const per = c.palaces.map((p) => `${p.name}宮（${p.dir}）：山${p.shan} 向${p.xiang} 運${p.yun}${p.flow ? ` 流年${p.flow}` : ''}｜${p.combo}（${p.ji}）${p.stars24 ? `｜天星 ${p.stars24}` : ''}`).join('\n');
+    return `${head}\n【各宮山星／向星／運星${c.flowYear ? '／流年星' : ''}及星曜組合${c.palaces.some((p) => p.stars24) ? '＋二十四天星' : ''}】\n${per}`;
   }
   return `${head}\n${xkPalaceFacts(c, scope).text}`;
 }
 
-// 玄空：綜合（原有解讀方向）
-const xkOverallInstr = (c) => `請以玄空風水大師角度，給出整體分析，條理清楚：
-1. 全局旺衰：此坐向在${c.period}運的整體吉凶（結合格局），財運與人丁何者較旺。
-2. 重點宮位：坐山、向首、中宮、以及最吉與最凶的宮位，各主何事。
-3. 流年影響：今年流年星飛臨何宮、與山向星的生剋，需注意什麼。
-4. 化解與催旺：針對凶宮給出具體化解（五行物品、顏色、擺設、方位），吉宮給出催旺方法。
-整體 450 字內，分點清楚。`;
+// 玄空＋天星：綜合整體解讀（總合參考，納入大門納氣、八宅床頭）
+const xkOverallInstr = (c, ex = {}) => {
+  const { door, bazhai, useXk = true, useS24 = true } = ex;
+  const pts = [
+    `全局旺衰：此坐向在${c.period}運的整體吉凶（${[useXk && '玄空格局', useS24 && '天星吉凶分佈'].filter(Boolean).join('＋')}），財運與人丁何者較旺。`,
+    `重點宮位：坐山、向首、中宮、最吉與最凶宮位，各主何事（${[useXk && '玄空組合', useS24 && '天星司職'].filter(Boolean).join('＋')}並論）。`,
+  ];
+  if (door) pts.push(`大門納氣：大門在${door.mountain}山（${door.dir}），所納為${door.yang}氣；分析該處星曜與天星吉凶如何影響入宅之氣，宜如何處理（宜明宜淨、催旺或化解）。`);
+  if (bazhai && bazhai.guaName) pts.push(`床頭／睡房建議：結合八宅命卦（${bazhai.guaName}命，${bazhai.east4 ? '東四命' : '西四命'}）吉方、玄空旺星與天星吉星，指出最宜的床頭／睡房方位（說明為何），以及要避開的凶方。`);
+  pts.push('流年影響與化解催旺：今年流年星飛臨何宮需注意，凶宮給出具體化解（五行物品、顏色、擺設、方位），吉宮給出催旺。');
+  return `請以玄空風水${useS24 ? '＋二十四天星' : ''}大師角度，給出整體綜合分析（總合參考），條理清楚：\n${pts.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n整體 520 字內，分點清楚。`;
+};
 
-const xkPalaceInstr = () => `請給出：
-1. 本宮吉凶：山向二星在此宮的組合意義（結合當運、失運、五行生剋），主財、丁、健康、官非、桃花等何事。
-2. 實際影響：此方位若為大門／臥室／廚房／書房等，會如何。
+const xkPalaceInstr = (ex = {}) => {
+  const { door, bazhai } = ex;
+  return `請給出本宮位的綜合分析：
+1. 本宮吉凶：山向二星與天星在此宮的組合意義（結合當運、失運、五行生剋、天星司職），主財、丁、健康、官非、桃花等何事。
+2. 實際影響：此方位若為大門／臥室／廚房／書房／床頭等，會如何${door ? '（並參考大門納氣）' : ''}${bazhai ? '（並結合八宅吉凶）' : ''}。
 3. 化解或催旺：具體方法（五行物品、顏色、材質、數量、擺放位置）。
-整體 300 字內，分點清楚。`;
+整體 320 字內，分點清楚。`;
+};
 
 // 玄空：可選主題（${AT} 會替換為「本宅全盤」或「某宮這個方位」）
 const XK_THEMES = {
@@ -164,34 +172,55 @@ const XK_THEMES = {
 整體 340 字內，分點清楚。`,
 };
 
-// 玄空：組主題 prompt（scope 為「整體」或宮名；theme 空或「綜合」走原有解讀）
-function xkPrompt(c, scope, theme, custom, context) {
+// 玄空＋天星：組主題 prompt（scope 為「整體」或宮名；extras 含 system/door/bazhai/star24）
+function xkPrompt(c, scope, theme, custom, context, extras = {}) {
+  const { system = 'both', door = null, bazhai = null, star24 = null } = extras;
   const isOverall = !scope || scope === '整體';
+  const useXk = system !== 's24';
+  const useS24 = system !== 'xk';
   const at = isOverall
     ? '本宅全盤（逐個重點宮位分別說明，並指出各宮方位）'
     : (() => { const { p } = xkPalaceFacts(c, scope); return `${p.name}宮（${p.dir}）這個方位`; })();
 
+  // 盤面資料（依體系）
+  let head = useXk ? xkHead(c, scope) : '';
+  if (useS24 && star24 && Array.isArray(star24.stars) && star24.stars.length) {
+    const s24lines = star24.stars.map((s) => `${s.mountain}山（${s.dir}・${s.palace}宮屬${s.palaceWx}）：${s.star}（${s.ji}${s.wx ? `・屬${s.wx}` : ''}・${s.group}組）— ${s.governs}`).join('\n');
+    head += `${head ? '\n\n' : ''}【二十四天星盤】（${star24.sit}山${star24.face}向；坐山星 ${star24.sitStar}、向首星 ${star24.faceStar}，吉星十二、凶星十二，各司其職）\n${s24lines}`;
+  }
+
+  // 大門納氣 ＋ 八宅命卦
+  const extraLines = [];
+  if (door) extraLines.push(`大門（納氣口）開在 ${door.mountain}山・${door.palace}宮（${door.dir}），屬${door.yang}氣${door.star24 ? `，該山天星為「${door.star24}」（${door.star24ji}${door.star24governs ? `，${door.star24governs}` : ''}）` : ''}。大門為納氣之口，其方位吉凶與所納陰陽之氣直接影響全宅。`);
+  if (bazhai && bazhai.guaName) {
+    const good = (bazhai.dirs || []).filter((d) => d.ji === '吉').map((d) => `${d.name}宮${d.dir}（${d.star}）`).join('、');
+    const bad = (bazhai.dirs || []).filter((d) => d.ji !== '吉').map((d) => `${d.name}宮${d.dir}（${d.star}）`).join('、');
+    extraLines.push(`宅主命卦：${bazhai.guaName}命（${bazhai.east4 ? '東四命' : '西四命'}）。八宅吉方：${good}；凶方：${bad}。`);
+  }
+  const extraBlock = extraLines.length ? `\n\n【大門與八宅命卦】\n${extraLines.join('\n')}` : '';
+
+  const sysNote = useXk && useS24 ? '玄空飛星與二十四天星並參' : useXk ? '以玄空飛星為據' : '以二十四天星為據';
   let instr;
   if (theme === '自訂') {
     instr = `使用者的問題是：「${custom}」
 
-請以玄空風水大師角度，針對${at}回答這個問題。要求：
-1. 先扣住盤面事實作判斷（山星、向星、運星、流年星的五行生剋與旺衰，以及卦象所主的人事物）。
+請以玄空風水大師角度（${sysNote}），針對${at}回答這個問題。要求：
+1. 先扣住盤面事實作判斷（星曜五行生剋與旺衰、卦象所主、天星司職、大門納氣、八宅吉凶）。
 2. 答案要具體、可執行：涉及擺設就給物品、材質、顏色、形狀、數量、位置；涉及人事就給明確傾向與應對。
-3. 明確指出是哪些星曜或卦象支持你的結論。
+3. 明確指出是哪些星曜、卦象或天星支持你的結論。
 4. 若問題與此盤無關或資料不足，直接說明並給出最接近的判斷。
 整體 340 字內，分點清楚。`;
   } else if (XK_THEMES[theme]) {
     instr = XK_THEMES[theme].replace(/\$\{AT\}/g, at);
   } else {
-    instr = isOverall ? xkOverallInstr(c) : xkPalaceInstr();
+    instr = isOverall ? xkOverallInstr(c, { door, bazhai, useXk, useS24 }) : xkPalaceInstr({ door, bazhai });
   }
 
   const extra = context && String(context).trim()
     ? `\n【使用者補充的實際情況】${String(context).trim()}\n（請把這些條件納入判斷，建議要配合現場實況。）`
     : '';
   const needRef = theme && theme !== '綜合';
-  return `${xkHead(c, scope)}${extra}\n\n${needRef ? `${XK_WX_REF}\n\n` : ''}${instr}`;
+  return `${head}${extraBlock}${extra}\n\n${needRef ? `${XK_WX_REF}\n\n` : ''}${instr}`;
 }
 
 // 奇門：自動尋物（時干為物、日干為事主）
@@ -343,7 +372,7 @@ export default async function handler(req, res) {
 
   let payload = req.body;
   if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
-  const { task, theme, custom, context, palace, symbols, chart, find, compare, ask, question, followups } = payload || {};
+  const { task, theme, custom, context, palace, symbols, chart, find, compare, ask, question, followups, system, door, bazhai, star24 } = payload || {};
 
   // 模型選擇：前端可選 flash（快速）/ pro（深度），白名單驗證，預設 flash
   const ALLOWED_MODELS = new Set(['deepseek-v4-flash', 'deepseek-v4-pro']);
@@ -369,7 +398,7 @@ export default async function handler(req, res) {
     if (!chart || !Array.isArray(chart.palaces)) { res.status(400).json({ error: '缺少玄空盤資料' }); return; }
     if (task === 'xkPalace' && !palace) { res.status(400).json({ error: '缺少玄空宮位資料' }); return; }
     if (theme === '自訂' && !(custom && String(custom).trim())) { res.status(400).json({ error: '請輸入想問的問題' }); return; }
-    prompt = xkPrompt(chart, task === 'xkOverall' ? '整體' : palace, theme, custom, context);
+    prompt = xkPrompt(chart, task === 'xkOverall' ? '整體' : palace, theme, custom, context, { system, door, bazhai, star24 });
   } else {
     if (!palace || !Array.isArray(symbols) || symbols.length === 0) { res.status(400).json({ error: '缺少宮位符號資料' }); return; }
     prompt = qimenPrompt(palace, symbols, theme || '物品', custom || '');
