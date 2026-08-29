@@ -9,7 +9,9 @@
 //
 // task：
 //   qimen      奇門單宮，theme 主題（物品/人物/地方/事情/自訂），payload: { palace, symbols[], theme, custom }
-//   qimenAsk   奇門問事全盤（用神取用＋應期），payload: { ask: { qtype, custom, chart, yongshen[], timing[] } }
+//   qimenAsk   奇門問事全盤（用神取用＋應期），payload: { ask: { qtype, custom, chart, yongshen[], timing[], relations[], kong[], facts[] } }
+//   star24     二十四天星，payload: { chart: { sit, face, sitStar, faceStar, stars[] }, theme, custom }
+//              theme 為 整體佈局／財運／感情桃花／健康／事業功名／自訂
 //   xkOverall  玄空整體，payload: { chart, theme?, custom?, context? }
 //   xkPalace   玄空單宮，payload: { chart, palace, theme?, custom?, context? }
 //              theme 為 綜合（預設）／傢俬擺設／顏色／形狀材質／風水擺設／房間用途／財運／健康／
@@ -270,6 +272,49 @@ ${timingLines || '（無特別線索）'}
 整體 520 字內，分點清楚。`;
 }
 
+// 二十四天星（玄道風水）：d = { sit, face, sitStar, faceStar, stars[{mountain,dir,palace,star,ji,wx,group,governs,rel}] }
+const S24_THEMES = {
+  整體佈局: `請給出整體佈局建議：
+1. 吉凶方位總覽：哪些方位是吉位（財、丁、貴人、文昌）、哪些是凶位（特別是屍氣大凶位、天賊、天烽）。
+2. 坐山與向首星：坐山星與向首星各主何事，此宅最需注意什麼。
+3. 門床灶書桌：大門、睡床、書桌、廚灶、廁所各宜放在哪些星位方位，忌放哪些。
+4. 凶位化解：對最凶的兩三個方位給出具體化解（宜低宜靜、五行物品、顏色）。
+整體 420 字內，分點清楚。`,
+  財運: `請專論財運：
+1. 財位分析：天錢（財位）落在哪個山向方位，該方位宜如何佈置（宜高大明亮整潔、可放什麼）。
+2. 輔助財星：從官、司祿、開陽等對事業財勢的方位提示。
+3. 破財位：天賊、搖光、敗傷等落在何處，該處忌什麼（忌高、忌動、忌放財物）。
+4. 星宮五行：財位星與宮位的生剋（得力或受制）與補救。
+整體 360 字內，分點清楚。`,
+  感情桃花: `請專論感情桃花：
+1. 天孫位（生產、佳兒佳媳）與咸池位（倒捶桃花、淫蕩之禍）各在何方，如何催吉避凶。
+2. 桃花佈局：想旺姻緣該在哪個方位下功夫（具體物品、顏色、成對數量），哪個方位萬萬不可催。
+3. 夫妻房與桃花位的配合建議。
+整體 340 字內，分點清楚。`,
+  健康: `請專論健康：
+1. 屍氣（大凶，病符死亡）落在何方，該方位忌作什麼（忌臥床、忌久坐、忌灶），如何化解。
+2. 天醫組（天田、天璇、天孫）方位如何利用以助健康。
+3. 敗傷、天烽等凶星位的注意事項（防跌打損傷、火災）。
+整體 340 字內，分點清楚。`,
+  事業功名: `請專論事業與功名：
+1. 文昌位（讀書文榜功名）與天樞位（規矩節度）在何方，書桌、書房、文昌塔如何擺。
+2. 從官（升職）、司祿（事業財勢）方位的催旺方法。
+3. 天權（小人位）在何方，如何防小人。
+整體 340 字內，分點清楚。`,
+};
+function star24Prompt(d, theme, custom) {
+  const lines = (d.stars || []).map((s) => `${s.mountain}山（${s.dir}・${s.palace}宮屬${s.palaceWx}）：${s.star}（${s.ji}${s.wx ? `・屬${s.wx}` : ''}・${s.group}組）— ${s.governs}${s.rel ? `｜星宮關係：${s.rel}` : ''}`).join('\n');
+  const instr = theme === '自訂'
+    ? `使用者的問題是：「${custom}」。請以二十四天星為據回答，扣住相關星位的方位與司職，具體可執行；若問題與此無關，直接說明並給最接近的判斷。整體 340 字內。`
+    : (S24_THEMES[theme] || S24_THEMES['整體佈局']);
+  return `以下是陽宅「${d.sit}山${d.face}向」的二十四天星盤（玄道風水，二十四星配二十四山，吉星十二、凶星十二，各司其職）：
+坐山星：${d.sitStar}；向首星：${d.faceStar}。
+各山星位：
+${lines}
+
+請以天星風水大師角度分析。${instr}`;
+}
+
 // 玄空：換運對比
 function xkComparePrompt(d) {
   const chartStr = (c) => c.palaces.map((p) => `${p.name}(${p.dir})山${p.shan}向${p.xiang}運${p.yun}`).join('；');
@@ -306,7 +351,11 @@ export default async function handler(req, res) {
   const model = (reqModel && ALLOWED_MODELS.has(reqModel)) ? reqModel : (process.env.AI_MODEL || 'deepseek-v4-flash');
 
   let prompt;
-  if (task === 'qimenAsk') {
+  if (task === 'star24') {
+    if (!chart || !Array.isArray(chart.stars) || !chart.stars.length) { res.status(400).json({ error: '缺少二十四天星資料' }); return; }
+    if (theme === '自訂' && !(custom && String(custom).trim())) { res.status(400).json({ error: '請輸入想問的問題' }); return; }
+    prompt = star24Prompt(chart, theme || '整體佈局', custom || '');
+  } else if (task === 'qimenAsk') {
     if (!ask || !ask.qtype || !ask.chart) { res.status(400).json({ error: '缺少問事資料' }); return; }
     if (ask.qtype === '自訂' && !(ask.custom && String(ask.custom).trim())) { res.status(400).json({ error: '請輸入想問的問題' }); return; }
     prompt = qimenAskPrompt(ask);
