@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
-import { Solar } from 'lunar-javascript';
+import { Solar, Lunar, LunarYear } from 'lunar-javascript';
 import { paipan } from './qimen/engine.js';
 import XuanKong from './xuankong/XuanKong.jsx';
 import TianXing from './tianxing/TianXing.jsx';
@@ -193,13 +193,34 @@ function branchMonths(year) {
   return rows.map((r) => ({ branch: r.branch, jie: r.jie, start: fmt(r.start), end: fmt(r.end), startFull: r.start.toYmdHms(), endFull: r.end.toYmdHms() }));
 }
 
+// ── 農曆月大小（大月30天／小月29天）─────────────────────────
+const CN_MONTH = ['正月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '冬月', '臘月'];
+function lunarMonths(year) {
+  // 只取本農曆年的月份（正月→臘月，含閏月），getMonths() 會帶到相鄰年份的邊界月，需過濾
+  return LunarYear.fromYear(year).getMonths()
+    .filter((m) => m.getYear() === year)
+    .map((m) => {
+      const mn = m.getMonth(); // 1-12，閏月為負
+      const dayCount = m.getDayCount(); // 29 或 30
+      return {
+        name: (m.isLeap() ? '閏' : '') + CN_MONTH[Math.abs(mn) - 1],
+        big: dayCount === 30,
+        dayCount,
+        start: Lunar.fromYmd(year, mn, 1).getSolar().toYmd(),
+        end: Lunar.fromYmd(year, mn, dayCount).getSolar().toYmd(),
+      };
+    });
+}
+
 // 月份時間分頁
 function MonthsPanel() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const rows = useMemo(() => branchMonths(year), [year]);
+  const lunarRows = useMemo(() => lunarMonths(year), [year]);
   const pad = (n) => String(n).padStart(2, '0');
   const nowStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   return (
     <div className="panel">
       <div className="panel-head">月份時間（節氣月）</div>
@@ -224,6 +245,26 @@ function MonthsPanel() {
           </tbody>
         </table>
         <div className="month-note">說明：命理月份以「節」為界（非農曆初一、亦非國曆初一）。如寅月由立春起、卯月由驚蟄起、子月由大雪起、丑月由小寒起。跨年的子月／丑月已標示其國曆起訖。</div>
+
+        <div className="panel-head" style={{ marginTop: 18 }}>農曆月大小（大月30天／小月29天）</div>
+        <table className="month-table">
+          <thead><tr><th>農曆月</th><th>大／小</th><th>天數</th><th>初一（國曆）</th><th>月底（國曆）</th></tr></thead>
+          <tbody>
+            {lunarRows.map((r) => {
+              const cur = todayStr >= r.start && todayStr <= r.end;
+              return (
+                <tr key={r.name} className={cur ? 'cur-month' : ''}>
+                  <td className="m-branch">{r.name}{cur ? '（今）' : ''}</td>
+                  <td><span className={r.big ? 'moon-big' : 'moon-small'}>{r.big ? '大月' : '小月'}</span></td>
+                  <td>{r.dayCount} 天</td>
+                  <td>{r.start.slice(5)}</td>
+                  <td>{r.end.slice(5)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div className="month-note">說明：此為農曆（陰曆）月份的大小月——大月 30 天、小月 29 天；閏月亦會列出。與上方以「節」為界的命理月份不同。</div>
       </div>
     </div>
   );
@@ -1027,8 +1068,13 @@ function UsageBadge() {
   );
 }
 
+const nowForm = () => {
+  const n = new Date();
+  return { year: n.getFullYear(), month: n.getMonth() + 1, day: n.getDate(), hour: n.getHours(), minute: n.getMinutes(), name: '', sex: '乾造' };
+};
+
 export default function App() {
-  const [form, setForm] = useState({ year: 2026, month: 5, day: 16, hour: 11, minute: 38, name: '', sex: '乾造' });
+  const [form, setForm] = useState(nowForm);
   const [submitted, setSubmitted] = useState({ ...form });
 
   const result = useMemo(() => {
