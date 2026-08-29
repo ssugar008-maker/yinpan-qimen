@@ -384,8 +384,8 @@ export default function XuanKong() {
       </div>
 
       {/* 星曜組合：九宮格排盤 */}
-      <div className="panel">
-        <div className="panel-head">星曜組合（山星＋向星）＋流年</div>
+      <details className="panel collapsible" open>
+        <summary className="panel-head">星曜組合（山星＋向星）＋流年</summary>
         <div className="panel-body">
           <div className="xk-grid combo-grid">
             {combos.map(({ p, combo }) => (
@@ -417,11 +417,11 @@ export default function XuanKong() {
             </div>
           )}
         </div>
-      </div>
+      </details>
 
       {/* 換運對比：前後兩盤 + 分析 */}
-      <div className="panel">
-        <div className="panel-head">換運對比（{sitM}山{faceM}向）</div>
+      <details className="panel collapsible">
+        <summary className="panel-head">換運對比（{sitM}山{faceM}向）</summary>
         <div className="panel-body">
           <div className="xk-form">
             <label>換前（運）
@@ -470,11 +470,11 @@ export default function XuanKong() {
             )}
           </div>
         </div>
-      </div>
+      </details>
 
       {/* 八宅命卦：九宮格 */}
-      <div className="panel">
-        <div className="panel-head">八宅命卦</div>
+      <details className="panel collapsible">
+        <summary className="panel-head">八宅命卦</summary>
         <div className="panel-body">
           <div className="xk-form">
             <label>出生年
@@ -512,16 +512,16 @@ export default function XuanKong() {
           </div>
           <div className="xk-note">四吉方（生氣、天醫、延年、伏位）宜作大門、臥室、書房；四凶方（絕命、五鬼、六煞、禍害）宜作廚廁、儲物，忌臥室大門。</div>
         </div>
-      </div>
+      </details>
 
       {/* 二十四天星（與玄空飛星共用同一坐向） */}
-      <div className="panel">
-        <div className="panel-head">二十四天星（{sitM}山{faceM}向）</div>
+      <details className="panel collapsible" open>
+        <summary className="panel-head">二十四天星（{sitM}山{faceM}向）</summary>
         <div className="panel-body">
-          <div className="xk-note" style={{ marginBottom: 8 }}>本區與上方玄空飛星<strong>共用同一坐向</strong>（坐{sitM}山・向{faceM}，羅盤度數 {degree}°），無需重複輸入；改坐向此處會同步更新。二十四天星隨坐向起盤，輔助判斷各方吉凶宜忌。需要 AI 深入分析或平面圖立極尺，請到「二十四天星」分頁。</div>
+          <div className="xk-note" style={{ marginBottom: 8 }}>本區與上方玄空飛星<strong>共用同一坐向</strong>（坐{sitM}山・向{faceM}，羅盤度數 {degree}°），無需重複輸入；改坐向此處會同步更新。二十四天星隨坐向起盤，輔助判斷各方吉凶宜忌。</div>
           <TianXingAnalysis sitM={sitM} faceM={faceM} />
         </div>
-      </div>
+      </details>
     </div>
   );
 }

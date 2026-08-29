@@ -3,6 +3,7 @@ import {
   MOUNTAINS24, TRIGRAMS8, mountainAt, norm360, screenAngle, polar, resolveCenter,
 } from './geometry.js';
 import { analyzeFloorplan } from './analyze.js';
+import { star24Map, STAR24_INFO } from '../tianxing/stars24.js';
 
 const STORE_KEY = 'mo_indoor_v1';
 
@@ -58,7 +59,7 @@ export default function Indoor({ onGotoXuanKong }) {
   const [showCompass, setShowCompass] = useState(saved?.showCompass ?? true);
   const [opacity, setOpacity] = useState(saved?.opacity ?? 0.9);
   const [compassSize, setCompassSize] = useState(saved?.compassSize ?? 1);
-  const [layers, setLayers] = useState({ mountains: true, trigrams: true, degrees: false, extend: true, ...(saved?.layers || {}) });
+  const [layers, setLayers] = useState({ mountains: true, trigrams: true, degrees: false, extend: true, stars24: false, ...(saved?.layers || {}) });
   const [selectedPin, setSelectedPin] = useState(null);
   const [auto, setAuto] = useState(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -198,6 +199,9 @@ export default function Indoor({ onGotoXuanKong }) {
   const sittingDeg = facingDeg != null ? norm360(facingDeg + 180) : null;
   const faceM = facingDeg != null ? mountainAt(facingDeg) : null;
   const sitM = sittingDeg != null ? mountainAt(sittingDeg) : null;
+  // 24 天星盤（依校準後的坐山起盤）
+  const star24 = sitM ? star24Map(sitM.c) : null;
+  const star24Color = (ji) => (ji === '吉' ? '#16a34a' : ji === '大凶' ? '#7f1d1d' : '#dc2626');
 
   const applyToXuanKong = () => {
     if (facingDeg == null) return;
@@ -305,6 +309,14 @@ export default function Indoor({ onGotoXuanKong }) {
                     const p = polar(center.x, center.y, Rout * 0.6, sa);
                     return <HaloText key={'tg' + t.c} x={p.x} y={p.y} size={tgFont} fill="#7a2a8f">{t.c}</HaloText>;
                   })}
+                  {/* 24 天星（依校準坐山起盤，吉凶著色） */}
+                  {layers.stars24 && star24 && MOUNTAINS24.map((m) => {
+                    const star = star24[m.c];
+                    const info = STAR24_INFO[star] || {};
+                    const sa = norm360(m.deg + rot);
+                    const p = polar(center.x, center.y, Rout * 0.8, sa);
+                    return <HaloText key={'s24' + m.c} x={p.x} y={p.y} size={mtFont * 0.78} fill={star24Color(info.ji)}>{star}</HaloText>;
+                  })}
                   {/* optional degree numbers just inside the labels */}
                   {layers.degrees && MOUNTAINS24.map((m) => {
                     const sa = norm360(m.deg + rot);
@@ -384,7 +396,7 @@ export default function Indoor({ onGotoXuanKong }) {
                   <input type="range" min="0.2" max="1" step="0.05" value={opacity} onChange={(e) => setOpacity(parseFloat(e.target.value))} />
                 </div>
                 <div className="gp-layers">
-                  {[['mountains', '24山'], ['trigrams', '八卦'], ['degrees', '度數'], ['extend', '延伸線']].map(([k, l]) => (
+                  {[['mountains', '24山'], ['trigrams', '八卦'], ['stars24', '天星'], ['degrees', '度數'], ['extend', '延伸線']].map(([k, l]) => (
                     <label key={k} className="indoor-check">
                       <input type="checkbox" checked={layers[k]} onChange={(e) => setLayers((s) => ({ ...s, [k]: e.target.checked }))} /> {l}
                     </label>
