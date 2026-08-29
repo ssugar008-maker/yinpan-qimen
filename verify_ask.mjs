@@ -2,7 +2,7 @@
 // 用法：node verify_ask.mjs
 import handler from './api/interpret.js';
 import { paipan } from './src/qimen/engine.js';
-import { shiZhuStem, loveYongShen, stemPalace } from './src/qimen/ask.js';
+import { shiZhuStem, loveYongShen, stemPalace, kongShift, XIANTIAN_SHIFT, palaceRelation, palaceHarms, findFacts, detectFuFan } from './src/qimen/ask.js';
 
 process.env.AI_API_KEY = 'test-key';
 
@@ -113,6 +113,78 @@ if (jiaCase) {
   ok('事主為己時不再重複列己', !loveRows.some((r) => r.disp === '己'), loveRows.map((r) => r.disp));
 }
 
+// ── 空亡轉先天＋四害關係＋尋物推算 ──
+console.log('\n[0b] 空亡轉先天／四害關係／尋物推算');
+const PN = { 1: '坎一宮', 2: '坤二宮', 3: '震三宮', 4: '巽四宮', 5: '中五宮', 6: '乾六宮', 7: '兌七宮', 8: '艮八宮', 9: '離九宮' };
+const pf = (p) => PN[p];
+// 使用者例：坤的先天在坎、震的先天在艮
+ok('先天轉宮表：坤→坎、震→艮', XIANTIAN_SHIFT[2] === 1 && XIANTIAN_SHIFT[3] === 8, { 2: XIANTIAN_SHIFT[2], 3: XIANTIAN_SHIFT[3] });
+ok('先天轉宮表完整（離→震、坎→兌、兌→巽、巽→坤、乾→離、艮→乾）',
+  XIANTIAN_SHIFT[9] === 3 && XIANTIAN_SHIFT[1] === 7 && XIANTIAN_SHIFT[7] === 4 && XIANTIAN_SHIFT[4] === 2 && XIANTIAN_SHIFT[6] === 9 && XIANTIAN_SHIFT[8] === 6);
+// 預設盤（2026-05-16 11:38）：申酉空 → 坤二、兌七空亡
+const r0 = paipan(2026, 5, 16, 11, 38);
+ok('預設盤空亡宮＝坤二、兌七', JSON.stringify([...r0.kongPalaces].sort()) === JSON.stringify([2, 7]), r0.kongPalaces);
+const ks2 = kongShift(r0, 2);
+ok('坤二空亡 → 轉坎一（非雙空亡）', ks2 && ks2.to === 1 && ks2.double === false, ks2);
+const ks7 = kongShift(r0, 7);
+ok('兌七空亡 → 轉巽四', ks7 && ks7.to === 4 && ks7.double === false, ks7);
+ok('坎一不空亡 → 無轉宮', kongShift(r0, 1) === null);
+// 找一個寅卯空的盤 → 震三空亡轉艮八，艮八亦空 → 雙空亡（使用者例）
+let dbl = null;
+for (let d = 1; d <= 28 && !dbl; d++) for (let h = 0; h < 24 && !dbl; h += 2) {
+  const rr = paipan(2026, 6, d, h, 0);
+  if (rr.xunKong[3].join('') === '寅卯') { dbl = rr; }
+}
+ok('找到寅卯空的盤', !!dbl);
+if (dbl) {
+  const ks3 = kongShift(dbl, 3);
+  ok('震三空亡 → 轉艮八且雙空亡', ks3 && ks3.to === 8 && ks3.double === true, ks3);
+}
+// 四害關係強弱
+const harms = {};
+[1, 2, 3, 4, 6, 7, 8, 9].forEach((p) => { harms[p] = palaceHarms(r0, p); });
+ok('坤二宮四害含空亡', harms[2].includes('空亡'), harms[2]);
+ok('坎一宮四害含門迫', harms[1].includes('門迫'), harms[1]);
+// 坤（土，空亡）剋 坎（水，門迫）→ 兩宮皆害 → 如隔世界
+let rel = palaceRelation(r0, 2, 1, '用神', '事主', pf);
+ok('坤剋坎＋兩宮皆害 → 如隔世界', rel.includes('剋') && rel.includes('如隔世界'), rel);
+// 找「主動方無害、受方有害」的生剋對 → 關係更強
+let strongCase = null, weakCase = null, biheCase = null;
+const palaces = [1, 2, 3, 4, 6, 7, 8, 9];
+const wxOf = (p) => ({ 1: '水', 2: '土', 3: '木', 4: '木', 6: '金', 7: '金', 8: '土', 9: '火' })[p];
+const KE5 = { 木: '土', 土: '水', 水: '火', 火: '金', 金: '木' };
+const SHENG5 = { 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' };
+for (const a of palaces) for (const b of palaces) {
+  if (a === b) continue;
+  const acts = KE5[wxOf(a)] === wxOf(b) || SHENG5[wxOf(a)] === wxOf(b);
+  if (!acts) continue;
+  if (!harms[a].length && harms[b].length && !strongCase) strongCase = [a, b];
+  if (harms[a].length && !harms[b].length && !weakCase) weakCase = [a, b];
+}
+for (const a of palaces) for (const b of palaces) {
+  if (a !== b && wxOf(a) === wxOf(b) && !biheCase) biheCase = [a, b];
+}
+ok('存在「主動方無害、受方有害」之例', !!strongCase);
+if (strongCase) {
+  rel = palaceRelation(r0, strongCase[0], strongCase[1], '甲宮', '乙宮', pf);
+  ok('主動方無害＋受方有害 → 關係更強', rel.includes('更強'), rel);
+}
+ok('存在「主動方有害、受方無害」之例', !!weakCase);
+if (weakCase) {
+  rel = palaceRelation(r0, weakCase[0], weakCase[1], '甲宮', '乙宮', pf);
+  ok('主動方有害 → 力不從心', rel.includes('力不從心'), rel);
+}
+if (biheCase) {
+  rel = palaceRelation(r0, biheCase[0], biheCase[1], '甲宮', '乙宮', pf);
+  ok('同五行 → 比和', rel.includes('比和'), rel);
+}
+ok('同宮 → null', palaceRelation(r0, 2, 2, 'A', 'B', pf) === null);
+// 尋物推算：預設盤時干壬落離九、日干庚落坎一
+const ff = findFacts(r0, r0.pillarMarkPalaces[3], r0.pillarMarkPalaces[2]);
+ok('尋物：事主宮（水）剋物品宮（火）→ 容易找到', ff.relation.includes('剋') && ff.ease === '容易找到', ff);
+ok('尋物：離九與坎一對宮 → 相隔最遠', ff.distance.includes('對宮'), ff.distance);
+ok('尋物：快慢有伏吟/反吟/平常判定', /伏吟|反吟|平常/.test(ff.speed), ff.speed);
+
 console.log('\n[1] 問事全盤解讀 prompt');
 let r = await call(askPayload);
 const prompt = r.msgs[1].content;
@@ -164,6 +236,25 @@ ok('感情婚姻 prompt 含類別指引', r.msgs[1].content.includes('【類別�
 ok('感情婚姻 prompt 含桃花規則', r.msgs[1].content.includes('見乙、丙、丁主易有桃花'));
 r = await call(askPayload);
 ok('求財不帶類別指引', !r.msgs[1].content.includes('【類別指引】'));
+// 尋物與自選用神指引＋新區塊
+r = await call({
+  task: 'qimenAsk',
+  ask: {
+    qtype: '尋物', custom: '', chart: { pillars: [], dun: '陽', ju: 2 },
+    yongshen: [{ name: '時干 壬', role: '遺失物品', palace: '離九宮', wx: '火', branches: '午', marks: [], symbols: [] }],
+    timing: [], facts: ['兩宮生克：事主宮（水）剋物品宮（火） → 容易找到', '距離：對宮（相隔最遠）'],
+    relations: ['時干 壬（離九宮，屬火，無四害） 剋 日干 庚（坎一宮，屬水，門迫）。主動方帶四害（門迫）→ 剋而力不從心，作用大打折扣'],
+    kong: [{ who: '日干 庚', from: '坤二宮', to: '坎一宮', double: false, toSymbols: [{ label: '宮位', name: '坎一宮', meaning: '北方', attrs: ['水'] }] }],
+  },
+});
+ok('尋物 prompt 含尋物斷法指引', r.msgs[1].content.includes('尋物斷法') && r.msgs[1].content.includes('時干所落之宮代表遺失物品'));
+ok('prompt 含推算依據區塊', r.msgs[1].content.includes('【推算依據】') && r.msgs[1].content.includes('容易找到'));
+ok('prompt 含宮位關係區塊與四害規則', r.msgs[1].content.includes('【宮位關係】') && r.msgs[1].content.includes('力不從心'));
+ok('prompt 含空亡轉先天區塊', r.msgs[1].content.includes('【空亡轉先天】') && r.msgs[1].content.includes('八成信息轉至其先天位（坎一宮）'));
+r = await call({ task: 'qimenAsk', ask: { qtype: '自選用神', custom: '', chart: { pillars: [], dun: '陽', ju: 2 }, yongshen: [{ name: '生門（這間房子）', role: '這間房子', palace: '艮八宮', wx: '土', branches: '丑寅', marks: [], symbols: [] }], timing: [] } });
+ok('自選用神 prompt 含指引', r.msgs[1].content.includes('使用者自行指定了用神'));
+r = await call({ task: 'qimenAsk', ask: { qtype: '求財', chart: { pillars: [], dun: '陽', ju: 2 }, yongshen: [], timing: [] } });
+ok('無新資料時區塊顯示空註', r.msgs[1].content.includes('（無空亡轉宮）') && r.msgs[1].content.includes('（各宮無直接生剋或同宮）'));
 
 console.log('\n[5] 玄空替卦 payload 進 prompt');
 r = await call({
