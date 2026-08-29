@@ -55,6 +55,26 @@ export default function XuanKong() {
   const [birthYear, setBirthYear] = useState(1990);
   const [gender, setGender] = useState('男');
 
+  // 接收「室內」分頁套用的坐向度數（同時更新坐山／向首）
+  useEffect(() => {
+    const apply = () => {
+      try {
+        const raw = localStorage.getItem('mo_xk_apply');
+        if (!raw) return;
+        const { degree: d, mode } = JSON.parse(raw);
+        const dd = parseFloat(d);
+        if (isNaN(dd)) return;
+        const m = mountainFromDegree(dd);
+        setDegMode(mode || '向');
+        setDegree(String(d));
+        setSitM(mode === '坐' ? m : oppositeMountain(m));
+      } catch {}
+    };
+    apply();
+    window.addEventListener('mo-xk-apply', apply);
+    return () => window.removeEventListener('mo-xk-apply', apply);
+  }, []);
+
   const faceM = oppositeMountain(sitM);
   const chart = useMemo(
     () => (qiXing === '替卦' ? xuanKongChartTiGua(period, sitM, faceM) : xuanKongChart(period, sitM, faceM)),
