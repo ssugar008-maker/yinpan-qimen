@@ -9,6 +9,7 @@ import { useCloudStore } from '../cloud.js';
 import { aiInterpret } from '../ai.js';
 import FollowUpChat from '../FollowUp.jsx';
 import TianXingAnalysis from '../tianxing/TianXingAnalysis.jsx';
+import IndoorQuickView from '../indoor/IndoorQuickView.jsx';
 
 // AI 分析主題（與 api/interpret.js 的 XK_THEMES 對應；「綜合」＝原有整體解讀，「自訂」＝自由提問）
 const XK_AI_THEMES = ['綜合', '傢俬擺設', '顏色', '形狀材質', '風水擺設', '房間用途', '財運', '健康', '感情桃花', '事業文昌', '化解催旺', '自訂'];
@@ -303,6 +304,14 @@ export default function XuanKong() {
           </div>
         </div>
       </div>
+
+      {/* 室內平面圖＋羅盤速覽（唯讀，方便邊看邊問） */}
+      <details className="panel collapsible" open>
+        <summary className="panel-head">室內平面圖＋羅盤速覽</summary>
+        <div className="panel-body">
+          <IndoorQuickView />
+        </div>
+      </details>
 
       {/* AI 風水分析：範圍（整體／任一宮）× 主題（傢俬、顏色、形狀材質…／自訂問題） */}
       <div className="panel" ref={aiPanelRef}>
