@@ -37,7 +37,7 @@ function compressImage(file, cb) {
   img.src = URL.createObjectURL(file);
 }
 
-export default function Indoor({ onGotoXuanKong }) {
+export default function Indoor({ onGotoXuanKong, chartLib }) {
   const saved = useRef(loadStore()).current;
   const [img, setImg] = useState(saved?.img || null);
   const [pins, setPins] = useState(saved?.pins || []);
@@ -257,6 +257,18 @@ export default function Indoor({ onGotoXuanKong }) {
               <button key={v} className={`indoor-mode ${mode === v ? 'active' : ''}`} onClick={() => setMode(v)}>{l}</button>
             ))}
           </div>
+        )}
+        {img && chartLib && (
+          <button type="button" className="save-chart-btn" onClick={() => {
+            const def = `室內平面圖${sitM ? `（坐${sitM.c}向${faceM.c}）` : ''}`;
+            const name = window.prompt('為這個平面圖命名：', def);
+            if (name == null) return;
+            chartLib.save({
+              type: 'indoor', name: name.trim() || '未命名平面圖',
+              desc: sitM ? `坐${sitM.c}山 向${faceM.c}` : '未校準坐向',
+              state: { img, pins, centerMethod, manualCenter, refLine, refDegree, rot, decl, showCompass, opacity, compassSize, layers, center, facingDeg },
+            });
+          }}>💾 存盤</button>
         )}
       </div>
 

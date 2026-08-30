@@ -9,6 +9,8 @@ import { aiInterpret, AI_MODELS, getAiModelId, setAiModelId, getUsage } from './
 import FollowUpChat from './FollowUp.jsx';
 import AiText from './AiText.jsx';
 import ExportDialog from './ExportDialog.jsx';
+import ChartLibrary from './ChartLibrary.jsx';
+import { useChartLibrary } from './library.js';
 import { shiZhuStem, loveYongShen, detectFuFan, palaceHarms, kongShift, palaceRelation, findFacts, CUSTOM_CATS } from './qimen/ask.js';
 
 // ---- 简体→繁体（本盘用到的字） ----
@@ -1098,6 +1100,29 @@ export default function App() {
   };
   const shiZhuPalace = useMemo(() => computeShiZhu(result, querent), [result, querent]);
   const toggleGender = (key, val) => setQuerent((q) => ({ ...q, [key]: q[key] === val ? '' : val }));
+
+  // ── 我的命盤庫 ──
+  const chartLib = useChartLibrary();
+  const [libOpen, setLibOpen] = useState(false);
+  const [indoorKey, setIndoorKey] = useState(0); // 載入室內盤時強制 Indoor 重掛
+  // 載入盤：切換分頁；奇門在此還原，玄空讀 localStorage 還原，室內寫回 localStorage 後重掛
+  useEffect(() => {
+    const onLoad = (e) => {
+      const c = e.detail;
+      if (!c || !c.type) return;
+      if (c.type === 'qimen') {
+        if (c.state && c.state.form) { setForm(c.state.form); setSubmitted({ ...c.state.form }); }
+        if (c.state && c.state.querent) setQuerent(c.state.querent);
+      }
+      if (c.type === 'indoor' && c.state) {
+        try { localStorage.setItem('mo_indoor_v1', JSON.stringify(c.state)); } catch {}
+        setIndoorKey((k) => k + 1);
+      }
+      setTab(c.type === 'qimen' ? 'chart' : c.type);
+    };
+    window.addEventListener('mo-load-chart', onLoad);
+    return () => window.removeEventListener('mo-load-chart', onLoad);
+  }, []);
   // 時干（時柱天干）落天盤之宮 → 標「時干」
   const shiGanPalace = result ? result.pillarMarkPalaces[3] : null;
   // 點擊宮位查看各符號象意
@@ -1316,6 +1341,8 @@ export default function App() {
       <div className="subtitle">陰盤奇門 · 九宮飛星 · 玄空飛星 · 二十四天星</div>
       <ModelToggle />
       <UsageBadge />
+      <button type="button" className="lib-open-btn" onClick={() => setLibOpen(true)}>📁 命盤庫{chartLib.charts.length ? `（${chartLib.charts.length}）` : ''}</button>
+      {libOpen && <ChartLibrary charts={chartLib.charts} onRemove={chartLib.remove} onClose={() => setLibOpen(false)} cloudOn={chartLib.cloudOn} />}
 
       <div className="tabs">
         <button type="button" className={`tab${tab === 'chart' ? ' active' : ''}`} onClick={() => setTab('chart')}>陰盤奇門</button>
@@ -1327,8 +1354,8 @@ export default function App() {
 
       {tab === 'months' && <MonthsPanel />}
       {tab === 'stars' && <StarsPanel />}
-      {tab === 'xuankong' && <XuanKong />}
-      {tab === 'indoor' && <Indoor onGotoXuanKong={() => setTab('xuankong')} />}
+      {tab === 'xuankong' && <XuanKong chartLib={chartLib} />}
+      {tab === 'indoor' && <Indoor key={indoorKey} onGotoXuanKong={() => setTab('xuankong')} chartLib={chartLib} />}
 
       {tab === 'chart' && (<>
       <details className="panel collapsible" open={!isMobile}>
@@ -1440,6 +1467,16 @@ export default function App() {
                     { id: 'ask', label: 'AI 問事解讀', node: () => document.getElementById('qm-ask-result') },
                   ]}
                 />
+                <button type="button" className="save-chart-btn" onClick={() => {
+                  const def = `${submitted.year}-${String(submitted.month).padStart(2, '0')}-${String(submitted.day).padStart(2, '0')} ${String(submitted.hour).padStart(2, '0')}:${String(submitted.minute).padStart(2, '0')}${submitted.name ? ' ' + submitted.name : ''}`;
+                  const name = window.prompt('為這個奇門盤命名：', def);
+                  if (name == null) return;
+                  chartLib.save({
+                    type: 'qimen', name: name.trim() || '未命名奇門盤',
+                    desc: `${def}${querent.mode ? '・' + querent.mode : ''}`,
+                    state: { form: { ...submitted }, querent: { ...querent } },
+                  });
+                }}>💾 存盤</button>
               </div>
               <div className={`grid-wrap${showWuxing ? ' wx-on' : ''}`} ref={wrapRef} style={showWuxing ? { padding: `${wxPadding}px` } : undefined}>
                 <div className="grid">

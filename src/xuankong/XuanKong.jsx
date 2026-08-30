@@ -47,7 +47,7 @@ function XkGrid({ chart, flow = null, compact = false, onPick = null, picked = n
 }
 
 // 玄空飛星盤（下卦）
-export default function XuanKong() {
+export default function XuanKong({ chartLib }) {
   const now = new Date();
   const [sitM, setSitM] = useState('子');
   const [period, setPeriod] = useState(9);
@@ -78,6 +78,29 @@ export default function XuanKong() {
     apply();
     window.addEventListener('mo-xk-apply', apply);
     return () => window.removeEventListener('mo-xk-apply', apply);
+  }, []);
+
+  // 命盤庫載入（還原玄空盤狀態）
+  useEffect(() => {
+    const restore = () => {
+      try {
+        const c = JSON.parse(localStorage.getItem('mo_load_chart') || 'null');
+        if (!c || c.type !== 'xuankong' || !c.state) return;
+        const s = c.state;
+        if (s.sitM) setSitM(s.sitM);
+        if (s.period) setPeriod(s.period);
+        if (s.flowYear) setFlowYear(s.flowYear);
+        if (s.degree != null) setDegree(String(s.degree));
+        if (s.degMode) setDegMode(s.degMode);
+        if (s.qiXing) setQiXing(s.qiXing);
+        if (s.doorM != null) setDoorM(s.doorM);
+        if (s.birthYear) setBirthYear(s.birthYear);
+        if (s.gender) setGender(s.gender);
+      } catch {}
+    };
+    restore();
+    window.addEventListener('mo-load-chart', restore);
+    return () => window.removeEventListener('mo-load-chart', restore);
   }, []);
 
   const faceM = oppositeMountain(sitM);
@@ -592,6 +615,20 @@ export default function XuanKong() {
           <TianXingAnalysis sitM={sitM} faceM={faceM} />
         </div>
       </details>
+
+      {/* 存盤到命盤庫（浮動按鈕，於匯出上方） */}
+      <div className="xk-save-fab">
+        <button type="button" className="save-chart-btn" onClick={() => {
+          const def = `坐${sitM}山 向${faceM}（${period}運）`;
+          const name = window.prompt('為這個玄空盤命名：', def);
+          if (name == null) return;
+          chartLib.save({
+            type: 'xuankong', name: name.trim() || '未命名玄空盤',
+            desc: `${def}${flowYear ? `・${flowYear}年` : ''}`,
+            state: { sitM, period, flowYear, degree, degMode, qiXing, doorM, birthYear, gender },
+          });
+        }}>💾 存盤</button>
+      </div>
 
       {/* 匯出圖片（浮動按鈕，於平面圖按鈕上方） */}
       <div className="xk-export-fab">
