@@ -644,6 +644,9 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
   box-shadow: 0 4px 16px rgba(0,0,0,0.25); cursor: pointer;
 }
 .xk-export-fab { position: fixed; right: 16px; bottom: 66px; z-index: 60; }
+.xk-save-fab { position: fixed; right: 16px; bottom: 114px; z-index: 60; }
+.xk-save-fab .save-chart-btn { border-radius: 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); background: #fff; padding: 10px 14px; }
+.lib-open-btn { display: block; margin: 8px auto 0; padding: 7px 16px; border-radius: 20px; border: 1px solid #cbb98f; background: #fff; color: #5a4a2f; font-weight: 700; font-size: 13px; cursor: pointer; }
 .xk-export-fab .exp-btn { border-radius: 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); background: #fff; }
 .xk-plan-overlay {
   position: fixed; inset: 0; z-index: 70; background: rgba(20,16,8,0.55);
@@ -685,6 +688,54 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .exp-mode { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid #eee5d5; margin-bottom: 12px; }
 .exp-actions { display: flex; gap: 8px; }
 .exp-cancel { padding: 8px 14px; border-radius: 8px; border: 1px solid #cbb98f; background: #fff; color: #5a4a2f; font-weight: 700; cursor: pointer; }
+
+/* 我的命盤庫 */
+.lib-overlay { position: fixed; inset: 0; z-index: 90; background: rgba(20,16,8,0.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.lib-modal { background: #fbf8f1; border-radius: 14px; width: 100%; max-width: 480px; max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.35); }
+.lib-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-weight: 800; color: var(--accent); border-bottom: 1px solid #e8dfc8; }
+.lib-head > span:first-child { flex: 1; }
+.lib-close { border: none; background: #eee5d5; border-radius: 8px; width: 30px; height: 30px; cursor: pointer; color: #5a4a2f; }
+.lib-empty { padding: 24px 16px; text-align: center; color: #8a7a5a; font-size: 13px; line-height: 1.8; }
+.lib-list { overflow-y: auto; padding: 8px; }
+.lib-row { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #eee5d5; border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+.lib-row-main { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lib-type { flex: none; font-size: 11px; font-weight: 800; color: #fff; padding: 2px 7px; border-radius: 8px; }
+.lib-type-qimen { background: #7c5cb0; }
+.lib-type-xuankong { background: #b8860b; }
+.lib-type-indoor { background: #2563eb; }
+.lib-name-wrap { flex: 1; min-width: 0; }
+.lib-name { font-weight: 700; font-size: 14px; color: #3a3226; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-desc { font-size: 11px; color: #8a7a5a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-row-actions { display: flex; gap: 6px; flex: none; }
+.lib-load { padding: 6px 12px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-weight: 700; cursor: pointer; }
+.lib-del { padding: 6px 10px; border-radius: 8px; border: 1px solid #e0c0c0; background: #fff; color: #c62828; font-weight: 700; cursor: pointer; }
+.save-chart-btn { padding: 7px 12px; border-radius: 8px; border: 1px solid #cbb98f; background: #fff; color: #5a4a2f; font-weight: 700; font-size: 12px; cursor: pointer; }
+
+/* 十干克應格局 */
+.geju-list { display: flex; flex-direction: column; gap: 5px; }
+.geju-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; background: #fff; border: 1px solid #eee5d5; border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+.geju-row.good { border-left: 4px solid #16a34a; }
+.geju-row.half { border-left: 4px solid #b8860b; }
+.geju-row.bad { border-left: 4px solid #c62828; }
+.geju-pal { font-weight: 800; color: var(--accent); flex: none; }
+.geju-combo { font-weight: 700; color: #5a4a2f; flex: none; }
+.geju-name { font-weight: 800; color: #3a3226; }
+.geju-ji { font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 8px; color: #fff; flex: none; }
+.geju-row.good .geju-ji { background: #16a34a; }
+.geju-row.half .geju-ji { background: #b8860b; }
+.geju-row.bad .geju-ji { background: #c62828; }
+.geju-desc { flex: 1 1 100%; font-size: 12px; color: #6a5a3f; }
+
+/* 奇門多盤對比 */
+.qm-cmp-form { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.qm-cmp-label { font-size: 12px; font-weight: 700; color: #5a4a2f; }
+.qm-cmp-form input { width: 62px; padding: 7px 6px; border: 1px solid #cbb98f; border-radius: 6px; font-size: 13px; }
+.qm-cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.qm-cmp-col { background: #fff; border: 1px solid #eee5d5; border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.5; }
+.qm-cmp-title { font-weight: 800; color: var(--accent); margin-bottom: 4px; }
+.qm-cmp-row { margin: 2px 0; }
+.qm-cmp-geju { color: #6a5a3f; font-size: 11px; }
+@media (max-width: 640px) { .qm-cmp-grid { grid-template-columns: 1fr; } }
 
 @media (max-width: 640px) {
   .page { padding: 10px 8px 44px; }
@@ -1235,6 +1286,17 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .indoor-layers { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
 .indoor-check { display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: #5a4a2f; cursor: pointer; }
 .indoor-check input { accent-color: var(--accent); }
+
+/* 室內房間標注 */
+.indoor-room { background: #fff; border: 1px solid #eee5d5; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; }
+.indoor-room.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.indoor-room-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.indoor-room-top select { padding: 5px 8px; border: 1px solid #cbb98f; border-radius: 6px; font-size: 13px; font-weight: 700; color: #5a4a2f; background: #fff; }
+.indoor-room-pal { font-size: 12px; color: #8a7a5a; font-weight: 600; flex: 1; }
+.indoor-room-ji { font-size: 11px; font-weight: 800; color: #fff; padding: 2px 8px; border-radius: 8px; }
+.indoor-room-del { margin-left: auto; border: none; background: #f0e6e6; color: #c62828; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-weight: 700; flex: none; }
+.indoor-room-adv { margin-top: 6px; font-size: 12px; line-height: 1.6; color: #4a4238; }
+.indoor-room-facts { font-size: 11px; color: #8a7a5a; margin-bottom: 2px; }
 
 @media (max-width: 640px) {
   .indoor-method-grid { grid-template-columns: repeat(3, 1fr); }

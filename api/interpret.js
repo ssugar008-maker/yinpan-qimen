@@ -252,6 +252,7 @@ ${symLines}
 
 // 奇門問事：類別專用解讀指引（用神已由前端按規則定位，這裡告訴 AI 該類別的斷法）
 const ASK_GUIDE = {
+  終身局: '終身局／命盤斷法：此為出生時間所排的本命盤，代表命主一生的性格與命運傾向。請以命主（日干）所落之宮為核心，綜合解讀：1. 性格特質（外在形象與內在脾性，依宮內星門神干的象意疊加）。2. 天賦與事業財運傾向（依值符值使、旺相之星門）。3. 感情婚姻與六親緣份。4. 健康弱點（依衰死之星、門迫擊刑入墓之宮）。5. 一生大運走向與關鍵建議（哪些方位／行業／行為宜多取用）。請指出哪些宮位符號支持哪些判斷。',
   感情婚姻: '本類別取用規則（已按此定位，請依此解讀）：對方由事主的天干五合合干而定（甲己、乙庚、丙辛、丁壬、戊癸相合），不固定看乙庚；值符為甲，甲己相合，故事主宮或對方宮見值符時，己亦為另一伴或情人，需兼看己所落之宮（有則已附於用神列表）；宮中見乙、丙、丁主易有桃花，見己主有「好聽話」式的桃花（已標註於各宮狀態）。請分析事主宮與對方宮的旺衰、兩宮五行生剋比和、是否相合相生、有無門迫擊刑入墓空亡，以及有無第三者（情人）之象。',
   尋物: '尋物斷法：時干所落之宮代表遺失物品，日干所落之宮代表事主（尋物者）。事主宮剋物品宮→容易找到；物品宮剋事主宮→較難找；物品宮生事主宮→物品會回來、易尋；事主宮生物品宮→要費力去尋；同宮→物品就在事主附近；相鄰→不遠；相隔越遠越費時；伏吟主慢、反吟主快（已算好的生克、快慢、距離見「推算依據」，請直接引用）。物品宮內的符號組合，用來推斷物品可能在哪裡、被什麼遮蓋或伴隨（高處／低處、金屬容器內、木器旁、被布遮蓋…），指出哪些符號提供了哪些線索。回答重點：能否找到（易／難、快／慢）、最可能在哪（方位＋具體環境）、往哪個方位與什麼類型的地方找。',
   自選用神: '使用者自行指定了用神及其代表的人事物。請圍繞各用神所落之宮分析：該宮五行與宮內符號組合（象意疊加）如何呼應其代表之事；宮與宮之間的五行生剋與四害強弱（見「宮位關係」）；用神宮空亡時以先天轉宮論（見「空亡轉先天」）。指出哪些符號支持哪些判斷，並給出明確的吉凶傾向與建議。',
@@ -363,6 +364,40 @@ function xkComparePrompt(d) {
 整體 380 字內，分點清楚。`;
 }
 
+// 玄空：兩盤對比（換宅前後／兩個坐向）
+function xkCompareTwoPrompt(d) {
+  const chartStr = (c) => c.palaces.map((p) => `${p.name}(${p.dir})山${p.shan}向${p.xiang}運${p.yun}`).join('；');
+  const typesStr = (typs) => (typs || []).map((t) => `${t.n}(${t.t})`).join('、') || '無特殊格局';
+  const one = (c, tag) => `【${tag}】坐${c.sit}山${c.face}向，${c.period}運${c.flowYear ? `，${c.flowYear}年流年` : ''}\n格局：${typesStr(c.types)}\n各宮：${chartStr(c)}`;
+  return `以下是兩個陽宅的玄空飛星盤（${d.note || '兩盤對比'}），請以玄空風水大師角度比較分析：
+
+${one(d.chartA, d.labelA || '甲盤')}
+
+${one(d.chartB, d.labelB || '乙盤')}
+
+請給出對比分析，條理清楚：
+1. 整體旺衰對比：兩盤在各自運的整體吉凶，哪一宅（或哪一運）較旺，財運與人丁消長。
+2. 關鍵差異：坐山、向首、最吉最凶宮位的差異，各主何事。
+3. 取捨建議：若為換宅／兩宅選擇，建議哪一個較佳、為什麼；各有什麼需要化解或注意之處。
+整體 420 字內，分點清楚。`;
+}
+
+// 奇門：多盤對比（兩個時間）
+function qimenComparePrompt(d) {
+  const one = (c, tag) => `【${tag}】${c.time}：四柱 ${c.pillars}（${c.dun}遁${c.ju}局）；值符 ${c.zhiFu}、值使 ${c.zhiShi}、馬星 ${c.horse}；事主（日干）落 ${c.shiZhu}、時干落 ${c.shiGan}；空亡 ${c.kong}；主要格局：${c.geju || '無'}`;
+  return `以下是奇門遁甲陰盤的兩個時盤（兩個時間點），請以奇門大師角度比較分析：
+
+${one(d.chartA, d.labelA || '甲盤')}
+
+${one(d.chartB, d.labelB || '乙盤')}
+
+請給出對比分析，條理清楚：
+1. 兩盤整體格局強弱與氣勢（值符值使旺衰、空亡、伏吟反吟）。
+2. 同一事項在兩盤的吉凶差異（若有用神主題則圍繞之；否則綜合而論）。
+3. 擇時建議：若要行事，哪個時間較佳、為什麼；各需注意什麼。
+整體 380 字內，分點清楚。`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
   const apiKeyRaw = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.Qimen;
@@ -391,6 +426,12 @@ export default async function handler(req, res) {
   } else if (task === 'xkCompare') {
     if (!compare || !compare.chartA || !compare.chartB) { res.status(400).json({ error: '缺少換運對比資料' }); return; }
     prompt = xkComparePrompt(compare);
+  } else if (task === 'xkCompareTwo') {
+    if (!compare || !compare.chartA || !compare.chartB) { res.status(400).json({ error: '缺少兩盤對比資料' }); return; }
+    prompt = xkCompareTwoPrompt(compare);
+  } else if (task === 'qimenCompare') {
+    if (!compare || !compare.chartA || !compare.chartB) { res.status(400).json({ error: '缺少奇門對比資料' }); return; }
+    prompt = qimenComparePrompt(compare);
   } else if (task === 'qimenFind') {
     if (!find || !find.item || !find.querent) { res.status(400).json({ error: '缺少尋物資料' }); return; }
     prompt = qimenFindPrompt(find);

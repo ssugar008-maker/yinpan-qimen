@@ -3,7 +3,12 @@ import {
   MOUNTAINS24, TRIGRAMS8, mountainAt, norm360, screenAngle, polar, resolveCenter,
 } from './geometry.js';
 import { analyzeFloorplan } from './analyze.js';
-import { star24Map } from '../tianxing/stars24.js';
+import { star24Map, STAR24_INFO, PALACE_MOUNTAINS24 } from '../tianxing/stars24.js';
+import { xuanKongChart, annualChart, starPair, PALACE_GUA, PALACE_DIR, PALACE_WX } from '../xuankong/engine.js';
+
+// 山 → 宮位（後天八卦）反查
+const MOUNTAIN_TO_PALACE = {};
+Object.entries(PALACE_MOUNTAINS24).forEach(([p, ms]) => ms.forEach((m) => { MOUNTAIN_TO_PALACE[m] = +p; }));
 import CompassOverlay, { HaloText } from './CompassOverlay.jsx';
 
 const STORE_KEY = 'mo_indoor_v1';
@@ -15,6 +20,28 @@ const CENTER_METHODS = [
   { v: 'pole', l: '◉ 內切', hint: '最大內切圓心，離所有牆最遠的點' },
   { v: 'manual', l: '👆 手動', hint: '直接在圖上點一下定中心' },
 ];
+
+const ROOM_TYPES = ['睡房', '主人房', '小孩房', '書房', '客廳', '廚房', '廁所', '大門', '神位', '通道', '其他'];
+// 依房間類型＋所在宮位（玄空組合／天星）給出吉凶與建議
+function roomAdvice(info, type) {
+  if (!info) return null;
+  const ji = info.xk ? info.xk.combo.t : (info.starInfo ? info.starInfo.ji : '平');
+  const isBad = ji === '凶' || ji === '大凶' || ji === '半凶';
+  const isGood = ji === '吉' || ji === '半吉';
+  const facts = [];
+  if (info.xk) facts.push(`玄空 山${info.xk.shan}・向${info.xk.xiang}${info.xk.flow ? `・流年${info.xk.flow}` : ''}「${info.xk.combo.n}」`);
+  if (info.star) facts.push(`天星「${info.star}」${info.starInfo.governs || ''}`);
+  let advice;
+  if (type === '廁所') advice = isBad ? '廁所壓凶位，正合「以污制凶」，可；保持乾淨。' : '廁所宜壓凶位；此宮偏吉，廁所在此略洩吉氣，宜保持乾淨通風。';
+  else if (type === '廚房') advice = isBad ? '廚房火旺於凶位，注意火喉安全；可放黃色／陶瓷洩化。' : '廚房在吉位，火助旺氣，利家人食祿健康。';
+  else if (['睡房', '主人房', '小孩房'].includes(type)) advice = isBad ? '睡房在凶位，久卧不利健康，宜化解或考慮調房。' : '睡房在吉位，利休息健康，床頭宜靠吉方。';
+  else if (type === '大門') advice = isBad ? '大門納凶氣，宜保持明亮、放地氈／植物化解。' : '大門納吉氣，宜明亮整潔，可催旺。';
+  else if (type === '書房') advice = isBad ? '書房在凶位，讀書易分心；宜放文昌塔／植物化解。' : '書房在吉位，利讀書功名，書桌宜朝向吉方。';
+  else if (type === '神位') advice = isBad ? '神位忌在凶位，宜移至吉方清淨處。' : '神位在吉位，清淨安穩，宜。';
+  else advice = isBad ? '此宮偏凶，宜靜不宜動，可作儲物／通道。' : '此宮偏吉，宜多用、宜明亮。';
+  if (isBad && info.xk && info.xk.combo.r) advice += ` 化解：${info.xk.combo.r}。`;
+  return { ji, isBad, isGood, facts, advice };
+}
 
 function loadStore() {
   try { const raw = localStorage.getItem(STORE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
@@ -37,7 +64,7 @@ function compressImage(file, cb) {
   img.src = URL.createObjectURL(file);
 }
 
-export default function Indoor({ onGotoXuanKong }) {
+export default function Indoor({ onGotoXuanKong, chartLib }) {
   const saved = useRef(loadStore()).current;
   const [img, setImg] = useState(saved?.img || null);
   const [pins, setPins] = useState(saved?.pins || []);
@@ -55,6 +82,8 @@ export default function Indoor({ onGotoXuanKong }) {
   const [selectedPin, setSelectedPin] = useState(null);
   const [auto, setAuto] = useState(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [rooms, setRooms] = useState(saved?.rooms || []); // 房間標注 [{x,y,type}]
+  const [selRoom, setSelRoom] = useState(null);
 
   const svgRef = useRef(null);
   const drag = useRef({ idx: null, downPt: null, moved: false });
@@ -73,10 +102,10 @@ export default function Indoor({ onGotoXuanKong }) {
       const obj = raw ? JSON.parse(raw) : {};
       localStorage.setItem(STORE_KEY, JSON.stringify({
         ...obj, img, pins, centerMethod, manualCenter, refLine, refDegree, rot, decl,
-        showCompass, opacity, compassSize, layers,
+        showCompass, opacity, compassSize, layers, rooms,
       }));
     } catch {}
-  }, [img, pins, centerMethod, manualCenter, refLine, refDegree, rot, decl, showCompass, opacity, compassSize, layers]);
+  }, [img, pins, centerMethod, manualCenter, refLine, refDegree, rot, decl, showCompass, opacity, compassSize, layers, rooms]);
 
   // centre resolution: pins (>=3) win, otherwise fall back to image auto-detection
   const center = useMemo(() => {
@@ -176,6 +205,14 @@ export default function Indoor({ onGotoXuanKong }) {
       if (!d.moved) setSelectedPin((s) => (s === d.idx ? null : d.idx));
     } else if (mode === 'pin' && d.downPt && !d.moved) {
       setPins((ps) => { const np = [...ps, pt]; setSelectedPin(np.length - 1); return np; });
+    } else if (mode === 'room' && d.downPt && !d.moved) {
+      // 點一下：若點到既有房間則選中，否則新增房間
+      const hit = rooms.findIndex((r) => Math.hypot(r.x - pt.x, r.y - pt.y) < HIT_R);
+      if (hit >= 0) setSelRoom((s) => (s === hit ? null : hit));
+      else {
+        setRooms((rs) => [...rs, { x: Math.round(pt.x), y: Math.round(pt.y), type: '睡房' }]);
+        setSelRoom(rooms.length);
+      }
     }
     drag.current = { idx: null, downPt: null, moved: false };
   };
@@ -195,6 +232,26 @@ export default function Indoor({ onGotoXuanKong }) {
   const sitM = sittingDeg != null ? mountainAt(sittingDeg) : null;
   // 24 天星盤（依校準後的坐山起盤）
   const star24 = sitM ? star24Map(sitM.c) : null;
+  // 玄空盤（9運）＋流年，用於房間吉凶
+  const flowYearNow = new Date().getFullYear();
+  const xkChart = useMemo(() => (sitM ? xuanKongChart(9, sitM.c, faceM.c) : null), [sitM, faceM]);
+  const xkFlow = useMemo(() => annualChart(flowYearNow), [flowYearNow]);
+  // 計算某點（圖像座標）所在的宮位＋吉凶
+  const roomInfo = useCallback((pt) => {
+    if (!center) return null;
+    const sa = screenAngle(center, pt); // 螢幕方位
+    const trueBearing = norm360(sa - rot); // 扣回羅盤旋轉 → 真方位
+    const m = mountainAt(trueBearing);
+    const palace = MOUNTAIN_TO_PALACE[m.c];
+    const star = star24 ? star24[m.c] : null;
+    const starInfo = star ? (STAR24_INFO[star] || {}) : null;
+    let xk = null;
+    if (xkChart && palace) {
+      const combo = starPair(xkChart.sG[palace], xkChart.fG[palace]);
+      xk = { shan: xkChart.sG[palace], xiang: xkChart.fG[palace], flow: xkFlow[palace], combo };
+    }
+    return { mountain: m.c, palace, palaceName: PALACE_GUA[palace], dir: PALACE_DIR[palace], star, starInfo, xk };
+  }, [center, rot, star24, xkChart, xkFlow]);
 
   // persist computed centre + facing so the 玄空 quick-view can render without re-detecting
   useEffect(() => {
@@ -253,10 +310,22 @@ export default function Indoor({ onGotoXuanKong }) {
         </label>
         {img && (
           <div className="indoor-modes">
-            {[['view', '👁 檢視'], ['pin', '🔴 加點'], ['manual', '🎯 中心'], ['ref', '🧭 坐向']].map(([v, l]) => (
+            {[['view', '👁 檢視'], ['pin', '🔴 加點'], ['manual', '🎯 中心'], ['ref', '🧭 坐向'], ['room', '🏠 標房']].map(([v, l]) => (
               <button key={v} className={`indoor-mode ${mode === v ? 'active' : ''}`} onClick={() => setMode(v)}>{l}</button>
             ))}
           </div>
+        )}
+        {img && chartLib && (
+          <button type="button" className="save-chart-btn" onClick={() => {
+            const def = `室內平面圖${sitM ? `（坐${sitM.c}向${faceM.c}）` : ''}`;
+            const name = window.prompt('為這個平面圖命名：', def);
+            if (name == null) return;
+            chartLib.save({
+              type: 'indoor', name: name.trim() || '未命名平面圖',
+              desc: sitM ? `坐${sitM.c}山 向${faceM.c}` : '未校準坐向',
+              state: { img, pins, centerMethod, manualCenter, refLine, refDegree, rot, decl, showCompass, opacity, compassSize, layers, center, facingDeg },
+            });
+          }}>💾 存盤</button>
         )}
       </div>
 
@@ -318,6 +387,21 @@ export default function Indoor({ onGotoXuanKong }) {
                   <HaloText x={p.x} y={p.y - PIN_R * 2.4} size={unit * 0.03} fill="#c60">{i + 1}</HaloText>
                 </g>
               ))}
+
+              {/* 房間標注（按所在宮位吉凶著色） */}
+              {rooms.map((r, i) => {
+                const info = roomInfo(r);
+                const ji = info && info.xk ? info.xk.combo.t : (info && info.starInfo ? info.starInfo.ji : null);
+                const col = ji === '吉' || ji === '半吉' ? '#16a34a' : ji === '大凶' ? '#7f1d1d' : (ji === '凶' || ji === '半凶') ? '#dc2626' : '#b8860b';
+                return (
+                  <g key={'room' + i}>
+                    <circle cx={r.x} cy={r.y} r={HIT_R} fill="transparent" />
+                    <rect x={r.x - PIN_R * 1.2} y={r.y - PIN_R * 1.2} width={PIN_R * 2.4} height={PIN_R * 2.4} rx={PIN_R * 0.5}
+                      fill={col} stroke="#fff" strokeWidth={unit * 0.005} opacity={selRoom === i ? 1 : 0.9} />
+                    <HaloText x={r.x} y={r.y - PIN_R * 2.8} size={unit * 0.032} fill={col}>{r.type}</HaloText>
+                  </g>
+                );
+              })}
 
               {center && !showCompass && (
                 <g>
@@ -409,6 +493,37 @@ export default function Indoor({ onGotoXuanKong }) {
                 <button className="indoor-xk" onClick={applyToXuanKong}>⭐ 套用到玄空飛星</button>
               </div>
             )}
+          </div>
+
+          <div className="indoor-panel">
+            <div className="indoor-panel-title">③ 房間標注（按宮位吉凶）</div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>
+              {sitM ? '按「🏠 標房」後在平面圖點房間位置，會依其所在宮位自動顯示吉凶與建議。' : '請先完成②設定坐向，才能計算各房間的吉凶。'}
+            </div>
+            {rooms.length === 0 && <div className="indoor-method-hint">尚未標注房間。</div>}
+            {rooms.map((r, i) => {
+              const info = roomInfo(r);
+              const adv = roomAdvice(info, r.type);
+              const col = adv ? (adv.isGood ? '#16a34a' : adv.isBad ? '#c62828' : '#b8860b') : '#b8860b';
+              return (
+                <div key={i} className={`indoor-room${selRoom === i ? ' sel' : ''}`} onClick={() => setSelRoom(selRoom === i ? null : i)}>
+                  <div className="indoor-room-top">
+                    <select value={r.type} onClick={(e) => e.stopPropagation()} onChange={(e) => setRooms((rs) => rs.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}>
+                      {ROOM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    {info && <span className="indoor-room-pal">{info.palaceName}宮・{info.dir}・{info.mountain}山</span>}
+                    {adv && <span className="indoor-room-ji" style={{ background: col }}>{adv.ji}</span>}
+                    <button type="button" className="indoor-room-del" onClick={(e) => { e.stopPropagation(); setRooms((rs) => rs.filter((_, j) => j !== i)); setSelRoom(null); }}>✕</button>
+                  </div>
+                  {adv && (
+                    <div className="indoor-room-adv">
+                      <div className="indoor-room-facts">{adv.facts.join('；')}</div>
+                      <div>{adv.advice}</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
