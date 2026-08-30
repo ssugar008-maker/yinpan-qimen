@@ -8,6 +8,7 @@ import { useCloudStore } from './cloud.js';
 import { aiInterpret, AI_MODELS, getAiModelId, setAiModelId, getUsage } from './ai.js';
 import FollowUpChat from './FollowUp.jsx';
 import AiText from './AiText.jsx';
+import ExportDialog from './ExportDialog.jsx';
 import { shiZhuStem, loveYongShen, detectFuFan, palaceHarms, kongShift, palaceRelation, findFacts, CUSTOM_CATS } from './qimen/ask.js';
 
 // ---- 简体→繁体（本盘用到的字） ----
@@ -964,7 +965,7 @@ function AskPanel({ result, chartKey, shiZhuPalace, shiGanPalace, querent }) {
           {ai.loading ? 'AI 解讀中…' : (ai.text ? `↻ 重新解讀（${qtype}，已存檔）` : `✨ AI 問事解讀：${qtype === '自訂' ? (custom.trim() || '自訂問題') : qtype}（含應期）`)}
         </button>
         {ai.error && <div className="ai-error">{ai.error}</div>}
-        {ai.text && <div className="ai-result"><AiText text={ai.text} /></div>}
+        {ai.text && <div className="ai-result" id="qm-ask-result"><AiText text={ai.text} /></div>}
         {ai.text && <div className="ai-saved">✓ 已按「{qtype}」存檔（本盤），重整頁面亦保留</div>}
         {ai.text && (
           <FollowUpChat
@@ -1430,6 +1431,15 @@ export default function App() {
                 <button type="button" className={`wx-toggle${showWuxing ? ' on' : ''}`} onClick={() => setShowWuxing((v) => !v)}>
                   五行生克{showWuxing ? '·顯示' : '·隱藏'}
                 </button>
+                <ExportDialog
+                  fileBase={`奇門-${submitted.year}${String(submitted.month).padStart(2, '0')}${String(submitted.day).padStart(2, '0')}`}
+                  title={`陰盤奇門　${submitted.year}-${String(submitted.month).padStart(2, '0')}-${String(submitted.day).padStart(2, '0')} ${String(submitted.hour).padStart(2, '0')}:${String(submitted.minute).padStart(2, '0')}`}
+                  subtitle="MO易學"
+                  items={[
+                    { id: 'chart', label: '奇門盤（九宮格）', node: () => wrapRef.current },
+                    { id: 'ask', label: 'AI 問事解讀', node: () => document.getElementById('qm-ask-result') },
+                  ]}
+                />
               </div>
               <div className={`grid-wrap${showWuxing ? ' wx-on' : ''}`} ref={wrapRef} style={showWuxing ? { padding: `${wxPadding}px` } : undefined}>
                 <div className="grid">

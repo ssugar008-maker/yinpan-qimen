@@ -643,6 +643,8 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
   background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.25); cursor: pointer;
 }
+.xk-export-fab { position: fixed; right: 16px; bottom: 66px; z-index: 60; }
+.xk-export-fab .exp-btn { border-radius: 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); background: #fff; }
 .xk-plan-overlay {
   position: fixed; inset: 0; z-index: 70; background: rgba(20,16,8,0.55);
   display: flex; align-items: center; justify-content: center; padding: 12px;
@@ -670,6 +672,19 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .ai-line.bullet::before { content: '•'; position: absolute; left: 2px; color: var(--accent); font-weight: 800; }
 .ai-text .fwx { font-weight: 700; }
 .ai-text strong { color: #4a3a1f; }
+
+/* 匯出圖片 */
+.exp-btn { padding: 8px 14px; border-radius: 8px; border: 1px solid #cbb98f; background: #fff; color: #5a4a2f; font-weight: 700; font-size: 13px; cursor: pointer; }
+.exp-overlay { position: fixed; inset: 0; z-index: 80; background: rgba(20,16,8,0.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.exp-modal { background: #fbf8f1; border-radius: 14px; width: 100%; max-width: 420px; padding: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.35); max-height: 90vh; overflow-y: auto; }
+.exp-head { font-size: 16px; font-weight: 800; color: var(--accent); margin-bottom: 4px; }
+.exp-sub { font-size: 12px; color: #8a7a5a; margin-bottom: 10px; }
+.exp-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.exp-item { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #4a4238; cursor: pointer; }
+.exp-item input { accent-color: var(--accent); }
+.exp-mode { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid #eee5d5; margin-bottom: 12px; }
+.exp-actions { display: flex; gap: 8px; }
+.exp-cancel { padding: 8px 14px; border-radius: 8px; border: 1px solid #cbb98f; background: #fff; color: #5a4a2f; font-weight: 700; cursor: pointer; }
 
 @media (max-width: 640px) {
   .page { padding: 10px 8px 44px; }
