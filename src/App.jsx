@@ -11,6 +11,7 @@ import AiText from './AiText.jsx';
 import ExportDialog from './ExportDialog.jsx';
 import ChartLibrary from './ChartLibrary.jsx';
 import { useChartLibrary } from './library.js';
+import { allGeju } from './qimen/geju.js';
 import { shiZhuStem, loveYongShen, detectFuFan, palaceHarms, kongShift, palaceRelation, findFacts, CUSTOM_CATS } from './qimen/ask.js';
 
 // ---- 简体→繁体（本盘用到的字） ----
@@ -614,6 +615,12 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
 // ── AI 問事解讀（全盤・用神取用＋應期）────────────────────
 // 用神取用表：kind 為定位方式（door/star/god/stem 落宮、zhiFu/zhiShi、dayStem 事主、hourStem 時干、horse 馬星）
 const ASK_TYPES = [
+  // 終身局／命盤：以出生時間排本命盤，解讀性格、命運傾向、六親、大運走向
+  { id: '終身局', natal: true, ys: [
+    { kind: 'dayStem', role: '命主（本人）' },
+    { kind: 'zhiFu', role: '值符（命格大勢、貴人）' },
+    { kind: 'zhiShi', role: '值使（一生行事作風）' },
+  ] },
   { id: '求財', ys: [
     { kind: 'door', name: '生门', role: '財利、利潤' },
     { kind: 'stem', name: '戊', role: '資本、錢財' },
@@ -1125,6 +1132,43 @@ export default function App() {
   }, []);
   // 時干（時柱天干）落天盤之宮 → 標「時干」
   const shiGanPalace = result ? result.pillarMarkPalaces[3] : null;
+  // 十干克應格局（全盤偵測）
+  const gejuList = useMemo(() => allGeju(result), [result]);
+
+  // ── 多盤對比（兩個時間）──
+  const [form2, setForm2] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() + 1, day: n.getDate(), hour: n.getHours(), minute: n.getMinutes() }; });
+  const result2 = useMemo(() => { try { return paipan(+form2.year, +form2.month, +form2.day, +form2.hour, +form2.minute); } catch { return null; } }, [form2]);
+  const [cmpQm, setCmpQm] = useState({ loading: false, text: '', error: '' });
+  const shiZhuPalace2 = useMemo(() => computeShiZhu(result2, querent), [result2, querent]);
+  // 一盤的關鍵事實（對比用）
+  const qmFacts = (r, szPalace) => {
+    if (!r) return null;
+    const gj = allGeju(r).map((g) => `${PALACE_SHORT[g.palace]}宮${t(g.tian)}加${t(g.di)}「${t(g.name)}」(${g.ji})`).join('、');
+    return {
+      time: r.solarText, pillars: r.pillars.map((x) => t(x)).join(' '), dun: t(r.dun), ju: r.ju,
+      zhiFu: `${t(r.zhiFu.star)}（${PALACE_SHORT[r.zhiFu.palace]}宮）`, zhiShi: `${t(r.zhiShi.door)}（${PALACE_SHORT[r.zhiShi.palace]}宮）`,
+      horse: `${r.horse.zhi}（${PALACE_SHORT[r.horse.palace]}宮）`,
+      shiZhu: szPalace ? `${PALACE_SHORT[szPalace]}宮` : '未定',
+      shiGan: r.pillarMarkPalaces[3] ? `${PALACE_SHORT[r.pillarMarkPalaces[3]]}宮` : '—',
+      kong: (r.kongPalaces || []).map((p) => PALACE_SHORT[p]).join('') || '無',
+      geju: gj || '無',
+    };
+  };
+  const runCmpQm = async () => {
+    if (!result || !result2) return;
+    setCmpQm({ loading: true, text: '', error: '' });
+    try {
+      const { text } = await aiInterpret({
+        task: 'qimenCompare',
+        compare: {
+          labelA: `甲盤（${submitted.year}-${String(submitted.month).padStart(2, '0')}-${String(submitted.day).padStart(2, '0')}）`,
+          labelB: `乙盤（${form2.year}-${String(form2.month).padStart(2, '0')}-${String(form2.day).padStart(2, '0')}）`,
+          chartA: qmFacts(result, shiZhuPalace), chartB: qmFacts(result2, shiZhuPalace2),
+        },
+      });
+      setCmpQm({ loading: false, text, error: '' });
+    } catch (e) { setCmpQm({ loading: false, text: '', error: String((e && e.message) || e) }); }
+  };
   // 點擊宮位查看各符號象意
   const [selected, setSelected] = useState(null);
   // 自訂宮位標記 { 宮位: 文字 }（截圖分享解盤用）
@@ -1535,6 +1579,62 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {/* 十干克應格局（全盤偵測） */}
+          <details className="panel collapsible" open={!isMobile}>
+            <summary className="panel-head">十干克應格局{gejuList.length ? `（${gejuList.length}）` : ''}</summary>
+            <div className="panel-body">
+              {gejuList.length === 0 && <div className="ai-hist-empty">本盤各宮天盤干＋地盤干未見特殊格局。</div>}
+              {gejuList.length > 0 && (
+                <div className="geju-list">
+                  {gejuList.map((g, i) => (
+                    <div key={i} className={`geju-row ${g.ji === '吉' ? 'good' : g.ji === '半吉' ? 'half' : 'bad'}`}>
+                      <span className="geju-pal">{PALACE_SHORT[g.palace]}宮</span>
+                      <span className="geju-combo">{g.tian}加{g.di}</span>
+                      <span className="geju-name">{g.name}</span>
+                      <span className="geju-ji">{g.ji}</span>
+                      <span className="geju-desc">{g.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="ai-hist-empty" style={{ marginTop: 6 }}>十干克應：以各宮「天盤干＋地盤干」的組合斷吉凶（如戊加丙為青龍返首、丙加戊為飛鳥跌穴）。點宮位可看該宮詳細符號。</div>
+            </div>
+          </details>
+
+          {/* 多盤對比（兩個時間） */}
+          <details className="panel collapsible">
+            <summary className="panel-head">多盤對比（兩個時間）</summary>
+            <div className="panel-body">
+              <div className="qm-cmp-form">
+                <span className="qm-cmp-label">乙盤時間</span>
+                <input type="number" value={form2.year} onChange={(e) => setForm2({ ...form2, year: e.target.value })} placeholder="年" />
+                <input type="number" value={form2.month} onChange={(e) => setForm2({ ...form2, month: e.target.value })} placeholder="月" />
+                <input type="number" value={form2.day} onChange={(e) => setForm2({ ...form2, day: e.target.value })} placeholder="日" />
+                <input type="number" value={form2.hour} onChange={(e) => setForm2({ ...form2, hour: e.target.value })} placeholder="時" />
+                <input type="number" value={form2.minute} onChange={(e) => setForm2({ ...form2, minute: e.target.value })} placeholder="分" />
+              </div>
+              {result && result2 && (
+                <div className="qm-cmp-grid">
+                  {[['甲盤（目前）', qmFacts(result, shiZhuPalace)], ['乙盤（對比）', qmFacts(result2, shiZhuPalace2)]].map(([label, f]) => (
+                    <div key={label} className="qm-cmp-col">
+                      <div className="qm-cmp-title">{label}</div>
+                      <div className="qm-cmp-row">四柱：{f.pillars}</div>
+                      <div className="qm-cmp-row">{f.dun}遁{f.ju}局　值符 {f.zhiFu}　值使 {f.zhiShi}</div>
+                      <div className="qm-cmp-row">馬星 {f.horse}　空亡 {f.kong}</div>
+                      <div className="qm-cmp-row">事主落 {f.shiZhu}　時干落 {f.shiGan}</div>
+                      <div className="qm-cmp-row qm-cmp-geju">格局：{f.geju}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button type="button" className="ai-btn" onClick={runCmpQm} disabled={cmpQm.loading || !result2}>
+                {cmpQm.loading ? 'AI 分析中…' : (cmpQm.text ? '↻ 重新對比' : '✨ AI 對比兩盤')}
+              </button>
+              {cmpQm.error && <div className="ai-error">{cmpQm.error}</div>}
+              {cmpQm.text && <div className="ai-result"><AiText text={cmpQm.text} /></div>}
+            </div>
+          </details>
 
           <AskPanel result={result} chartKey={chartKey} shiZhuPalace={shiZhuPalace} shiGanPalace={shiGanPalace} querent={querent} />
 

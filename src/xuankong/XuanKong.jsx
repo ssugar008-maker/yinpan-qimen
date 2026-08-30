@@ -59,6 +59,9 @@ export default function XuanKong({ chartLib }) {
   const [perB, setPerB] = useState(9);
   const [birthYear, setBirthYear] = useState(1990);
   const [gender, setGender] = useState('男');
+  // 兩盤對比（換宅前後）：第二盤坐山
+  const [sitM2, setSitM2] = useState('午');
+  const [cmp2Ai, setCmp2Ai] = useState({ loading: false, text: '', error: '' });
 
   // 接收「室內」分頁套用的坐向度數（同時更新坐山／向首）
   useEffect(() => {
@@ -116,6 +119,10 @@ export default function XuanKong({ chartLib }) {
   const chartB = useMemo(() => xuanKongChart(perB, sitM, faceM), [perB, sitM, faceM]);
   const typesA = useMemo(() => chartTypes(chartA), [chartA]);
   const typesB = useMemo(() => chartTypes(chartB), [chartB]);
+  // 兩盤對比：第二盤（不同坐向，換宅前後）
+  const faceM2 = oppositeMountain(sitM2);
+  const chart2 = useMemo(() => (qiXing === '替卦' ? xuanKongChartTiGua(period, sitM2, faceM2) : xuanKongChart(period, sitM2, faceM2)), [period, sitM2, faceM2, qiXing]);
+  const types2 = useMemo(() => chartTypes(chart2), [chart2]);
   const gua = useMemo(() => lifeGua(+birthYear, gender), [birthYear, gender]);
   const bz = useMemo(() => bazhai(gua), [gua]);
 
@@ -280,6 +287,27 @@ export default function XuanKong({ chartLib }) {
       setCmpAi({ loading: false, text, error: '' });
       if (text) setXkAiLib((lib) => ({ ...lib, [cmpKey]: { text, thread: (libEntry(lib[cmpKey]) || {}).thread || [] } }));
     } catch (e) { setCmpAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
+  };
+
+  // ── 兩盤對比 AI（換宅前後／兩個坐向）──
+  const cmp2Key = `${sitM}${faceM}|${sitM2}${faceM2}|${period}|${flowYear}|cmp2`;
+  useEffect(() => { setCmp2Ai((prev) => (prev.loading ? prev : { loading: false, text: (libEntry(xkAiLib[cmp2Key]) || {}).text || '', error: '' })); }, [cmp2Key, xkAiLib]);
+  const cmp2Payload = {
+    task: 'xkCompareTwo',
+    compare: {
+      note: '換宅前後／兩個坐向對比',
+      labelA: `甲盤（目前）`, labelB: `乙盤（對比）`,
+      chartA: { sit: sitM, face: faceM, period, flowYear, types: types.map((t) => ({ n: t.n, t: t.t })), palaces: chartPayload.palaces },
+      chartB: { sit: sitM2, face: faceM2, period, flowYear, types: types2.map((t) => ({ n: t.n, t: t.t })), palaces: GRID.map((p) => { const c = starPair(chart2.sG[p], chart2.fG[p]); return { name: PALACE_GUA[p], dir: PALACE_DIR[p], shan: chart2.sG[p], xiang: chart2.fG[p], yun: chart2.pG[p], flow: flow[p], combo: c.n, ji: c.t }; }) },
+    },
+  };
+  const runCmp2Ai = async () => {
+    setCmp2Ai({ loading: true, text: '', error: '' });
+    try {
+      const { text } = await aiInterpret(cmp2Payload);
+      setCmp2Ai({ loading: false, text, error: '' });
+      if (text) setXkAiLib((lib) => ({ ...lib, [cmp2Key]: { text, thread: (libEntry(lib[cmp2Key]) || {}).thread || [] } }));
+    } catch (e) { setCmp2Ai({ loading: false, text: '', error: String((e && e.message) || e) }); }
   };
 
   // 星曜組合（九宮格用）
@@ -561,6 +589,40 @@ export default function XuanKong({ chartLib }) {
                 placeholder="追問：就這次換運再問（例：哪個宮位要先處理）…"
               />
             )}
+          </div>
+        </div>
+      </details>
+
+      {/* 兩盤對比（換宅前後／另一坐向） */}
+      <details className="panel collapsible">
+        <summary className="panel-head">兩盤對比（換宅前後／另一坐向）</summary>
+        <div className="panel-body">
+          <div className="xk-form">
+            <label>對比坐山（乙盤）
+              <select value={sitM2} onChange={(e) => setSitM2(e.target.value)}>
+                {MOUNTAINS24.map((m) => <option key={m.n} value={m.n}>{m.n}山（向{oppositeMountain(m.n)}）</option>)}
+              </select>
+            </label>
+            <div className="xk-note" style={{ alignSelf: 'center' }}>甲盤＝目前坐向（{sitM}山{faceM}向）；乙盤＝對比坐向（{sitM2}山{faceM2}向），同{period}運{flowYear ? `・${flowYear}年` : ''}。</div>
+          </div>
+          <div className="xk-compare">
+            <div className="xk-compare-col">
+              <div className="xk-compare-title">甲盤 {sitM}山{faceM}向</div>
+              <XkGrid chart={chart} compact />
+            </div>
+            <div className="xk-compare-arrow">⇄</div>
+            <div className="xk-compare-col">
+              <div className="xk-compare-title">乙盤 {sitM2}山{faceM2}向</div>
+              <XkGrid chart={chart2} compact />
+            </div>
+          </div>
+          <div className="ai-block" style={{ marginTop: 10 }}>
+            <button type="button" className="ai-btn" onClick={runCmp2Ai} disabled={cmp2Ai.loading}>
+              {cmp2Ai.loading ? 'AI 分析中…' : (cmp2Ai.text ? '↻ 重新對比（已存檔）' : '✨ AI 對比兩盤（換宅前後）')}
+            </button>
+            {cmp2Ai.error && <div className="ai-error">{cmp2Ai.error}</div>}
+            {cmp2Ai.text && <div className="ai-result"><AiText text={cmp2Ai.text} /></div>}
+            {cmp2Ai.text && <div className="ai-saved">✓ 已存檔（本兩盤＋運／流年），重整頁面亦保留</div>}
           </div>
         </div>
       </details>
