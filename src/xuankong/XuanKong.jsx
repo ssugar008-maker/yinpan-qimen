@@ -11,6 +11,7 @@ import FollowUpChat from '../FollowUp.jsx';
 import AiText from '../AiText.jsx';
 import TianXingAnalysis from '../tianxing/TianXingAnalysis.jsx';
 import IndoorQuickView from '../indoor/IndoorQuickView.jsx';
+import ExportDialog from '../ExportDialog.jsx';
 import { star24Map, STAR24_INFO, PALACE_MOUNTAINS24, analyze24 } from '../tianxing/stars24.js';
 
 // AI 分析主題（與 api/interpret.js 的 XK_THEMES 對應；「綜合」＝原有整體解讀，「自訂」＝自由提問）
@@ -138,6 +139,14 @@ export default function XuanKong() {
   const [doorM, setDoorM] = useState(''); // 大門所在山（納氣口）
   const [showPlan, setShowPlan] = useState(false); // 室內平面圖浮層
   const aiPanelRef = useRef(null);
+  // 匯出圖片用的 refs
+  const chartRef = useRef(null);
+  const comboRef = useRef(null);
+  const txRef = useRef(null);
+  const aiResultRef = useRef(null);
+  const planRef = useRef(null);
+  // 是否已有室內平面圖（決定匯出項目是否包含平面圖）
+  const hasPlan = useMemo(() => { try { const o = JSON.parse(localStorage.getItem('mo_indoor_v1') || 'null'); return !!(o && o.img); } catch { return false; } }, []);
   // 替卦起星說明（兼向時顯示並送入 AI）
   const tiGuaNote = chart.tiGua
     ? `山星原${chart.tiGua.sit.orig}入中，兼向替為${chart.tiGua.sit.star}入中（${chart.tiGua.sit.via ? `經${chart.tiGua.sit.via}山` : '五黃無替'}，${chart.tiGua.sit.forward ? '順' : '逆'}飛）；向星原${chart.tiGua.face.orig}入中，替為${chart.tiGua.face.star}入中（${chart.tiGua.face.via ? `經${chart.tiGua.face.via}山` : '五黃無替'}，${chart.tiGua.face.forward ? '順' : '逆'}飛）`
@@ -256,10 +265,10 @@ export default function XuanKong() {
 
   return (
     <div className="xk">
-      {/* 工作區：排盤 ＋ 室內平面圖 ＋ AI（寬屏三欄同時顯示，手機直排） */}
+      {/* 工作區：排盤 ＋ AI（寬屏兩欄同時顯示，手機直排）；室內平面圖用浮層 */}
       <div className="xk-workspace">
       {/* 排盤輸入 */}
-      <div className="panel">
+      <div className="panel" ref={chartRef}>
         <div className="panel-head">玄空飛星排盤（{qiXing}）</div>
         <div className="panel-body">
           <div className="xk-form">
@@ -409,7 +418,7 @@ export default function XuanKong() {
               : `${xkAi.text ? '↻ 重新分析' : '✨ AI 分析'}：${aiScope === '整體' ? '整體' : `${aiScope}宮`}・${aiTheme === '自訂' ? (customQ || '自訂問題') : aiTheme}${xkAi.text ? '（已存檔）' : ''}`}
           </button>
           {xkAi.error && <div className="ai-error">{xkAi.error}</div>}
-          {xkAi.text && <div className="ai-result"><AiText text={xkAi.text} /></div>}
+          {xkAi.text && <div className="ai-result" ref={aiResultRef}><AiText text={xkAi.text} /></div>}
           {xkAi.text && <div className="ai-saved">✓ 已按「{aiScope === '整體' ? '整體' : `${aiScope}宮`}・{aiTheme}」存檔（本坐向／運／流年{qiXing === '替卦' ? '／替卦' : ''}），重整頁面亦保留</div>}
           {xkAi.text && (
             <FollowUpChat
@@ -438,7 +447,7 @@ export default function XuanKong() {
       </div>{/* /xk-workspace */}
 
       {/* 星曜組合：九宮格排盤 */}
-      <details className="panel collapsible" open>
+      <details className="panel collapsible" open ref={comboRef}>
         <summary className="panel-head">星曜組合（山星＋向星）＋流年</summary>
         <div className="panel-body">
           <div className="xk-grid combo-grid">
@@ -576,13 +585,35 @@ export default function XuanKong() {
       </details>
 
       {/* 二十四天星（與玄空飛星共用同一坐向） */}
-      <details className="panel collapsible" open>
+      <details className="panel collapsible" open ref={txRef}>
         <summary className="panel-head">二十四天星（{sitM}山{faceM}向）</summary>
         <div className="panel-body">
           <div className="xk-note" style={{ marginBottom: 8 }}>本區與上方玄空飛星<strong>共用同一坐向</strong>（坐{sitM}山・向{faceM}，羅盤度數 {degree}°），無需重複輸入；改坐向此處會同步更新。二十四天星隨坐向起盤，輔助判斷各方吉凶宜忌。</div>
           <TianXingAnalysis sitM={sitM} faceM={faceM} />
         </div>
       </details>
+
+      {/* 匯出圖片（浮動按鈕，於平面圖按鈕上方） */}
+      <div className="xk-export-fab">
+        <ExportDialog
+          fileBase={`玄空-${sitM}山${faceM}向`}
+          title={`玄空飛星　坐${sitM}山 向${faceM}（${period}運${flowYear ? `・${flowYear}年` : ''}）`}
+          subtitle={new Date().toLocaleDateString('zh-Hant')}
+          items={[
+            { id: 'chart', label: '玄空排盤', node: () => chartRef.current },
+            { id: 'combo', label: '星曜組合＋流年', node: () => comboRef.current },
+            { id: 'tianxing', label: '二十四天星', node: () => txRef.current },
+            ...(xkAi.text ? [{ id: 'ai', label: 'AI 風水分析', node: () => aiResultRef.current }] : []),
+            ...(hasPlan ? [{ id: 'plan', label: '室內平面圖＋羅盤', node: () => planRef.current }] : []),
+          ]}
+        />
+      </div>
+      {/* 離屏渲染室內平面圖（供匯出用） */}
+      {hasPlan && (
+        <div style={{ position: 'fixed', left: -10000, top: 0, width: 720, zIndex: -1 }} aria-hidden="true">
+          <div ref={planRef}><IndoorQuickView /></div>
+        </div>
+      )}
 
       {/* 室內平面圖浮層（按需查看，不佔版面） */}
       <button type="button" className="xk-plan-fab" onClick={() => setShowPlan(true)} title="查看室內平面圖＋羅盤">🗺 平面圖</button>
