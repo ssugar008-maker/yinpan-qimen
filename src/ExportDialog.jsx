@@ -35,7 +35,7 @@ export default function ExportDialog({ items, title, subtitle, fileBase = 'moyix
 
   return (
     <>
-      <button type="button" className="exp-btn" onClick={() => setOpen(true)}>{buttonLabel}</button>
+      <button type="button" className="exp-btn" onClick={() => { setSel(new Set(items.map((i) => i.id))); setOpen(true); }}>{buttonLabel}</button>
       {open && (
         <div className="exp-overlay" onClick={() => setOpen(false)}>
           <div className="exp-modal" onClick={(e) => e.stopPropagation()}>
