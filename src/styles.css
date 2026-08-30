@@ -660,7 +660,16 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .xk-plan-body .indoor-canvas-wrap.qv { height: 62vh; }
 
 /* AI 結果：限高＋內部滾動＋自動換行，避免長文把頁面拖太長或撐太寬 */
-.ai-result { max-height: 340px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; line-height: 1.7; }
+.ai-result { max-height: 340px; overflow-y: auto; line-height: 1.7; }
+
+/* AI 富文字：標題、列點、五行/吉凶配色 */
+.ai-text { font-size: 14px; }
+.ai-line { margin: 2px 0; }
+.ai-line.header { font-weight: 800; color: var(--accent); margin-top: 10px; font-size: 15px; }
+.ai-line.bullet { padding-left: 14px; position: relative; }
+.ai-line.bullet::before { content: '•'; position: absolute; left: 2px; color: var(--accent); font-weight: 800; }
+.ai-text .fwx { font-weight: 700; }
+.ai-text strong { color: #4a3a1f; }
 
 @media (max-width: 640px) {
   .page { padding: 10px 8px 44px; }

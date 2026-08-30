@@ -8,6 +8,7 @@ import {
 import { useCloudStore } from '../cloud.js';
 import { aiInterpret } from '../ai.js';
 import FollowUpChat from '../FollowUp.jsx';
+import AiText from '../AiText.jsx';
 import TianXingAnalysis from '../tianxing/TianXingAnalysis.jsx';
 import IndoorQuickView from '../indoor/IndoorQuickView.jsx';
 import { star24Map, STAR24_INFO, PALACE_MOUNTAINS24, analyze24 } from '../tianxing/stars24.js';
@@ -408,7 +409,7 @@ export default function XuanKong() {
               : `${xkAi.text ? '↻ 重新分析' : '✨ AI 分析'}：${aiScope === '整體' ? '整體' : `${aiScope}宮`}・${aiTheme === '自訂' ? (customQ || '自訂問題') : aiTheme}${xkAi.text ? '（已存檔）' : ''}`}
           </button>
           {xkAi.error && <div className="ai-error">{xkAi.error}</div>}
-          {xkAi.text && <div className="ai-result">{xkAi.text}</div>}
+          {xkAi.text && <div className="ai-result"><AiText text={xkAi.text} /></div>}
           {xkAi.text && <div className="ai-saved">✓ 已按「{aiScope === '整體' ? '整體' : `${aiScope}宮`}・{aiTheme}」存檔（本坐向／運／流年{qiXing === '替卦' ? '／替卦' : ''}），重整頁面亦保留</div>}
           {xkAi.text && (
             <FollowUpChat
@@ -518,7 +519,7 @@ export default function XuanKong() {
               {cmpAi.loading ? 'AI 分析中…' : (cmpAi.text ? `↻ 重新分析（${perA}→${perB}運，已存檔）` : `✨ AI 換運分析（${perA}運 → ${perB}運）`)}
             </button>
             {cmpAi.error && <div className="ai-error">{cmpAi.error}</div>}
-            {cmpAi.text && <div className="ai-result">{cmpAi.text}</div>}
+            {cmpAi.text && <div className="ai-result"><AiText text={cmpAi.text} /></div>}
             {cmpAi.text && <div className="ai-saved">✓ 已存檔（本坐向＋{perA}→{perB}運），重整頁面亦保留</div>}
             {cmpAi.text && (
               <FollowUpChat

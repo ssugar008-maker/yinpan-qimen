@@ -4,6 +4,7 @@ import StarRing from './StarRing.jsx';
 import { useCloudStore } from '../cloud.js';
 import { aiInterpret } from '../ai.js';
 import FollowUpChat from '../FollowUp.jsx';
+import AiText from '../AiText.jsx';
 
 const jiColor24 = (ji) => (ji === '吉' ? '#16a34a' : ji === '大凶' ? '#7f1d1d' : '#dc2626');
 const S24_THEMES = ['整體佈局', '財運', '感情桃花', '健康', '事業功名', '自訂'];
@@ -122,7 +123,7 @@ export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
         {ai.loading ? 'AI 分析中…' : (ai.text ? `↻ 重新分析（${theme}，已存檔）` : `✨ AI 天星分析：${theme === '自訂' ? (custom.trim() || '自訂問題') : theme}`)}
       </button>
       {ai.error && <div className="ai-error">{ai.error}</div>}
-      {ai.text && <div className="ai-result">{ai.text}</div>}
+      {ai.text && <div className="ai-result"><AiText text={ai.text} /></div>}
       {ai.text && <div className="ai-saved">✓ 已按「{theme}」存檔（本坐向），重整頁面亦保留</div>}
       {ai.text && (
         <FollowUpChat

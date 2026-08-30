@@ -7,6 +7,7 @@ import { DOOR_INFO, STAR_INFO, GOD_INFO, STEM_INFO, PALACE_INFO, WUXING_SHENG, W
 import { useCloudStore } from './cloud.js';
 import { aiInterpret, AI_MODELS, getAiModelId, setAiModelId, getUsage } from './ai.js';
 import FollowUpChat from './FollowUp.jsx';
+import AiText from './AiText.jsx';
 import { shiZhuStem, loveYongShen, detectFuFan, palaceHarms, kongShift, palaceRelation, findFacts, CUSTOM_CATS } from './qimen/ask.js';
 
 // ---- 简体→繁体（本盘用到的字） ----
@@ -588,7 +589,7 @@ function PalaceModal({ p, result, shiZhuPalace, shiGanPalace, customLabel, onSet
                 {ai.loading ? 'AI 解讀中…' : (ai.text ? `↻ 重新解讀（${theme}，已存檔）` : `✨ AI 解讀：${theme === '自訂' ? (customTheme || '自訂主題') : `組合推斷${theme}`}`)}
               </button>
               {ai.error && <div className="ai-error">{ai.error}</div>}
-              {ai.text && <div className="ai-result">{ai.text}</div>}
+              {ai.text && <div className="ai-result"><AiText text={ai.text} /></div>}
               {ai.text && <div className="ai-saved">✓ 已按「{theme}」主題存入「AI 解讀記錄」，重開本宮會直接顯示</div>}
               {ai.text && onSaveThread && (
                 <FollowUpChat
@@ -963,7 +964,7 @@ function AskPanel({ result, chartKey, shiZhuPalace, shiGanPalace, querent }) {
           {ai.loading ? 'AI 解讀中…' : (ai.text ? `↻ 重新解讀（${qtype}，已存檔）` : `✨ AI 問事解讀：${qtype === '自訂' ? (custom.trim() || '自訂問題') : qtype}（含應期）`)}
         </button>
         {ai.error && <div className="ai-error">{ai.error}</div>}
-        {ai.text && <div className="ai-result">{ai.text}</div>}
+        {ai.text && <div className="ai-result"><AiText text={ai.text} /></div>}
         {ai.text && <div className="ai-saved">✓ 已按「{qtype}」存檔（本盤），重整頁面亦保留</div>}
         {ai.text && (
           <FollowUpChat
