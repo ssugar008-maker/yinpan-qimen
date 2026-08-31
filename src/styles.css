@@ -688,6 +688,11 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .exp-mode { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid #eee5d5; margin-bottom: 12px; }
 .exp-actions { display: flex; gap: 8px; }
 .exp-cancel { padding: 8px 14px; border-radius: 8px; border: 1px solid #cbb98f; background: #fff; color: #5a4a2f; font-weight: 700; cursor: pointer; }
+.exp-result { max-width: 560px; }
+.exp-result-list { display: flex; flex-direction: column; gap: 14px; }
+.exp-result-item { display: flex; flex-direction: column; gap: 6px; }
+.exp-result-label { font-weight: 800; color: #8b5a2b; font-size: 13px; }
+.exp-result-img { width: 100%; border: 1px solid #eee5d5; border-radius: 8px; background: #fff; }
 
 /* 我的命盤庫 */
 .lib-overlay { position: fixed; inset: 0; z-index: 90; background: rgba(20,16,8,0.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
@@ -1297,6 +1302,19 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .indoor-room-del { margin-left: auto; border: none; background: #f0e6e6; color: #c62828; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-weight: 700; flex: none; }
 .indoor-room-adv { margin-top: 6px; font-size: 12px; line-height: 1.6; color: #4a4238; }
 .indoor-room-facts { font-size: 11px; color: #8a7a5a; margin-bottom: 2px; }
+/* 標房：單點/區域切換＋家具 */
+.indoor-room-submode { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
+.indoor-room-submode button { padding: 6px 12px; border-radius: 8px; border: 1px solid #cbb98f; background: #fff; font-size: 12px; font-weight: 700; color: #5a4a2f; cursor: pointer; }
+.indoor-room-submode button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.indoor-area-done { background: #16a34a !important; border-color: #16a34a !important; color: #fff !important; }
+.indoor-area-cancel { color: #c62828 !important; }
+.indoor-room-mtn { font-size: 11px; font-weight: 800; color: var(--accent); margin-bottom: 2px; }
+.indoor-room-furn { margin-top: 6px; display: flex; gap: 6px; align-items: flex-start; }
+.indoor-room-furn-label { font-size: 11px; font-weight: 700; color: #8a7a5a; flex: none; padding-top: 3px; }
+.indoor-room-furn-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.furn-chip { padding: 3px 8px; border-radius: 12px; border: 1px solid #d8cbaa; background: #fff; font-size: 11px; font-weight: 600; color: #5a4a2f; cursor: pointer; }
+.furn-chip.on { background: #2563eb; border-color: #2563eb; color: #fff; }
+.indoor-room-furn-note { margin-top: 5px; font-size: 11px; color: #6a5a3f; line-height: 1.5; background: #f7f3e8; border-radius: 6px; padding: 5px 8px; }
 
 @media (max-width: 640px) {
   .indoor-method-grid { grid-template-columns: repeat(3, 1fr); }

@@ -1,6 +1,15 @@
 import { toPng } from 'html-to-image';
 
-// 下載 dataURL 為 PNG
+// iOS Safari 對 canvas 面積有限制（過大會產生空白圖）；此為安全上限
+const MAX_PIXELS = 5_000_000;
+function safeRatio(w, h, want = 3) {
+  const area = Math.max(1, w * h);
+  return Math.max(1, Math.min(want, Math.sqrt(MAX_PIXELS / area)));
+}
+
+export const isIOS = () => (typeof navigator !== 'undefined') && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+// 下載 dataURL 為 PNG（桌面用；iOS 由呼叫端改用預覽長按儲存）
 export function downloadDataUrl(dataUrl, filename) {
   const a = document.createElement('a');
   a.href = dataUrl;
@@ -23,26 +32,26 @@ function expandForCapture(root, contentWidth) {
   });
 }
 
-// 擷取單一 DOM 節點為 PNG（先複製到離屏容器並展開，確保完整＋高解析）
-export async function captureNode(node, filename) {
+// 擷取單一 DOM 節點，回傳 dataURL（複製到離屏容器並展開，確保完整）
+export async function captureNodeData(node) {
   const host = document.createElement('div');
-  host.style.cssText = 'position:fixed;left:-10000px;top:0;width:780px;background:#fbf8f1;padding:14px 16px;z-index:-1;';
+  host.style.cssText = 'position:fixed;left:0;top:0;width:780px;background:#fbf8f1;padding:14px 16px;z-index:-1;pointer-events:none;';
   const clone = node.cloneNode(true);
   host.appendChild(clone);
   document.body.appendChild(host);
   expandForCapture(host, 748);
   try {
-    const dataUrl = await toPng(host, { backgroundColor: '#fbf8f1', pixelRatio: 3, cacheBust: true });
-    downloadDataUrl(dataUrl, filename);
+    const w = host.offsetWidth, h = host.offsetHeight;
+    return await toPng(host, { backgroundColor: '#fbf8f1', pixelRatio: safeRatio(w, h), cacheBust: true });
   } finally {
     host.remove();
   }
 }
 
-// 擷取多個節點「合併」為一張直向長圖：複製節點到離屏容器，加標題與品牌，再一次擷取
-export async function captureCombined(sections, filename, meta = {}) {
+// 擷取多個節點「合併」為一張直向長圖，回傳 dataURL
+export async function captureCombinedData(sections, meta = {}) {
   const host = document.createElement('div');
-  host.style.cssText = 'position:fixed;left:-10000px;top:0;width:780px;background:#fbf8f1;padding:20px 22px;font-family:inherit;z-index:-1;';
+  host.style.cssText = 'position:fixed;left:0;top:0;width:780px;background:#fbf8f1;padding:20px 22px;font-family:inherit;z-index:-1;pointer-events:none;';
   const head = document.createElement('div');
   head.style.cssText = 'font-size:20px;font-weight:800;color:#6b4f2a;margin-bottom:4px;letter-spacing:1px;';
   head.textContent = meta.title || 'MO易學';
@@ -62,8 +71,7 @@ export async function captureCombined(sections, filename, meta = {}) {
       lh.textContent = sec.label;
       wrap.appendChild(lh);
     }
-    const clone = sec.node.cloneNode(true);
-    wrap.appendChild(clone);
+    wrap.appendChild(sec.node.cloneNode(true));
     host.appendChild(wrap);
   });
   const foot = document.createElement('div');
@@ -73,8 +81,8 @@ export async function captureCombined(sections, filename, meta = {}) {
   document.body.appendChild(host);
   expandForCapture(host, 708);
   try {
-    const dataUrl = await toPng(host, { backgroundColor: '#fbf8f1', pixelRatio: 3, cacheBust: true });
-    downloadDataUrl(dataUrl, filename);
+    const w = host.offsetWidth, h = host.offsetHeight;
+    return await toPng(host, { backgroundColor: '#fbf8f1', pixelRatio: safeRatio(w, h), cacheBust: true });
   } finally {
     host.remove();
   }

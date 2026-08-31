@@ -22,6 +22,27 @@ const CENTER_METHODS = [
 ];
 
 const ROOM_TYPES = ['睡房', '主人房', '小孩房', '書房', '客廳', '廚房', '廁所', '大門', '神位', '通道', '其他'];
+
+// 常用家具（五行）：標房時可一拼加入分析
+const COMMON_FURNITURE = [
+  { n: '床', wx: '木' }, { n: '床頭櫃', wx: '木' }, { n: '衣櫃', wx: '木' }, { n: '書桌', wx: '木' }, { n: '書櫃', wx: '木' },
+  { n: '沙發', wx: '土' }, { n: '茶几', wx: '土' }, { n: '電視', wx: '火' }, { n: '電腦', wx: '火' }, { n: '檯燈', wx: '火' },
+  { n: '魚缸', wx: '水' }, { n: '加濕器', wx: '水' }, { n: '鏡子', wx: '金' }, { n: '金屬架', wx: '金' }, { n: '植物', wx: '木' },
+  { n: '冷氣', wx: '金' }, { n: '音響', wx: '火' }, { n: '保險箱', wx: '金' }, { n: '水晶', wx: '土' }, { n: '鹽燈', wx: '土' },
+];
+
+// 計算一個區域（多邊形點）從中心跨越哪些山（角度範圍）；單點則回傳所在山
+function coveredMountains(pts, center, rot) {
+  const bs = pts.map((p) => norm360(screenAngle(center, p) - rot));
+  if (!bs.length) return [];
+  if (bs.length === 1) return [mountainAt(bs[0]).c];
+  const mn = Math.min(...bs), mx = Math.max(...bs);
+  const wrap = mx - mn > 180; // 跨正北
+  return MOUNTAINS24.filter((m) => {
+    if (!wrap) return mn <= m.deg + 7.5 && mx >= m.deg - 7.5; // 扇形與山區（±7.5°）有重疊
+    return (m.deg + 7.5 >= mx) || (m.deg - 7.5 <= mn); // 跨 0° 的情況
+  }).map((m) => m.c);
+}
 // 依房間類型＋所在宮位（玄空組合／天星）給出吉凶與建議
 function roomAdvice(info, type) {
   if (!info) return null;
@@ -41,6 +62,22 @@ function roomAdvice(info, type) {
   else advice = isBad ? '此宮偏凶，宜靜不宜動，可作儲物／通道。' : '此宮偏吉，宜多用、宜明亮。';
   if (isBad && info.xk && info.xk.combo.r) advice += ` 化解：${info.xk.combo.r}。`;
   return { ji, isBad, isGood, facts, advice };
+}
+
+// 家具與宮位五行的配合分析
+const WX_KE = { 木: '土', 土: '水', 水: '火', 火: '金', 金: '木' };
+const WX_SHENG = { 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' };
+function furnitureNote(room, infos) {
+  const furn = (room.furniture || []).map((n) => COMMON_FURNITURE.find((f) => f.n === n)).filter(Boolean);
+  if (!furn.length || !infos.length || !infos[0].palace) return '';
+  const palWx = PALACE_WX[infos[0].palace];
+  const list = furn.map((f) => `${f.n}（${f.wx}）`).join('、');
+  const bad = furn.filter((f) => WX_KE[f.wx] === palWx);
+  const good = furn.filter((f) => WX_SHENG[f.wx] === palWx || f.wx === palWx);
+  let note = `家具五行：${list}（宮屬${palWx}）。`;
+  if (bad.length) note += ` ⚠ ${bad.map((f) => f.n).join('、')}屬${[...new Set(bad.map((f) => f.wx))].join('')}剋${palWx}宮，宜留意或化解。`;
+  if (good.length) note += ` ✓ ${good.map((f) => f.n).join('、')}與宮位相合。`;
+  return note;
 }
 
 function loadStore() {
@@ -82,8 +119,10 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   const [selectedPin, setSelectedPin] = useState(null);
   const [auto, setAuto] = useState(null);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [rooms, setRooms] = useState(saved?.rooms || []); // 房間標注 [{x,y,type}]
+  const [rooms, setRooms] = useState(saved?.rooms || []); // 房間標注 [{x,y,type} 或 {pts,type}]
   const [selRoom, setSelRoom] = useState(null);
+  const [roomSubMode, setRoomSubMode] = useState('point'); // 標房：point 單點 / area 區域
+  const [areaDraft, setAreaDraft] = useState([]); // 區域描點中
 
   const svgRef = useRef(null);
   const drag = useRef({ idx: null, downPt: null, moved: false });
@@ -206,12 +245,17 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     } else if (mode === 'pin' && d.downPt && !d.moved) {
       setPins((ps) => { const np = [...ps, pt]; setSelectedPin(np.length - 1); return np; });
     } else if (mode === 'room' && d.downPt && !d.moved) {
-      // 點一下：若點到既有房間則選中，否則新增房間
-      const hit = rooms.findIndex((r) => Math.hypot(r.x - pt.x, r.y - pt.y) < HIT_R);
-      if (hit >= 0) setSelRoom((s) => (s === hit ? null : hit));
-      else {
-        setRooms((rs) => [...rs, { x: Math.round(pt.x), y: Math.round(pt.y), type: '睡房' }]);
-        setSelRoom(rooms.length);
+      if (roomSubMode === 'area') {
+        // 區域模式：逐點描房間範圍
+        setAreaDraft((dr) => [...dr, { x: Math.round(pt.x), y: Math.round(pt.y) }]);
+      } else {
+        // 單點模式：若點到既有房間則選中，否則新增房間
+        const hit = rooms.findIndex((r) => Math.hypot((r.pts ? r.pts[0].x : r.x) - pt.x, (r.pts ? r.pts[0].y : r.y) - pt.y) < HIT_R);
+        if (hit >= 0) setSelRoom((s) => (s === hit ? null : hit));
+        else {
+          setRooms((rs) => [...rs, { x: Math.round(pt.x), y: Math.round(pt.y), type: '睡房', furniture: [] }]);
+          setSelRoom(rooms.length);
+        }
       }
     }
     drag.current = { idx: null, downPt: null, moved: false };
@@ -237,21 +281,37 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   const xkChart = useMemo(() => (sitM ? xuanKongChart(9, sitM.c, faceM.c) : null), [sitM, faceM]);
   const xkFlow = useMemo(() => annualChart(flowYearNow), [flowYearNow]);
   // 計算某點（圖像座標）所在的宮位＋吉凶
-  const roomInfo = useCallback((pt) => {
-    if (!center) return null;
-    const sa = screenAngle(center, pt); // 螢幕方位
-    const trueBearing = norm360(sa - rot); // 扣回羅盤旋轉 → 真方位
-    const m = mountainAt(trueBearing);
-    const palace = MOUNTAIN_TO_PALACE[m.c];
-    const star = star24 ? star24[m.c] : null;
+  // 單山的宮位＋玄空＋天星資訊
+  const mountainInfo = useCallback((mc) => {
+    const palace = MOUNTAIN_TO_PALACE[mc];
+    const star = star24 ? star24[mc] : null;
     const starInfo = star ? (STAR24_INFO[star] || {}) : null;
     let xk = null;
     if (xkChart && palace) {
       const combo = starPair(xkChart.sG[palace], xkChart.fG[palace]);
       xk = { shan: xkChart.sG[palace], xiang: xkChart.fG[palace], flow: xkFlow[palace], combo };
     }
-    return { mountain: m.c, palace, palaceName: PALACE_GUA[palace], dir: PALACE_DIR[palace], star, starInfo, xk };
-  }, [center, rot, star24, xkChart, xkFlow]);
+    return { mountain: mc, palace, palaceName: PALACE_GUA[palace], dir: PALACE_DIR[palace], star, starInfo, xk };
+  }, [star24, xkChart, xkFlow]);
+  // 一個點 → 所在山
+  const pointMountain = useCallback((pt) => {
+    if (!center) return null;
+    return mountainAt(norm360(screenAngle(center, pt) - rot)).c;
+  }, [center, rot]);
+  // 房間（單點或區域）→ 涵蓋的山列表的資訊
+  const roomAnalysis = useCallback((room) => {
+    if (!center) return [];
+    const pts = room.pts && room.pts.length ? room.pts : [{ x: room.x, y: room.y }];
+    return coveredMountains(pts, center, rot).map(mountainInfo);
+  }, [center, rot, mountainInfo]);
+  // 房間主吉凶（取最凶者）
+  const roomJi = (infos) => {
+    if (!infos.length) return null;
+    const order = { '大凶': 4, '凶': 3, '半凶': 2, '平': 1, '半吉': 0.5, '吉': 0 };
+    let worst = infos[0];
+    infos.forEach((i) => { const ji = i.xk ? i.xk.combo.t : (i.starInfo ? i.starInfo.ji : '平'); if ((order[ji] ?? 1) > (order[worst.xk ? worst.xk.combo.t : (worst.starInfo ? worst.starInfo.ji : '平')] ?? 1)) worst = i; });
+    return worst.xk ? worst.xk.combo.t : (worst.starInfo ? worst.starInfo.ji : '平');
+  };
 
   // persist computed centre + facing so the 玄空 quick-view can render without re-detecting
   useEffect(() => {
@@ -388,20 +448,35 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
                 </g>
               ))}
 
-              {/* 房間標注（按所在宮位吉凶著色） */}
+              {/* 房間標注（單點＝方塊；區域＝多邊形），按所在宮位吉凶著色 */}
               {rooms.map((r, i) => {
-                const info = roomInfo(r);
-                const ji = info && info.xk ? info.xk.combo.t : (info && info.starInfo ? info.starInfo.ji : null);
+                const infos = roomAnalysis(r);
+                const ji = roomJi(infos);
                 const col = ji === '吉' || ji === '半吉' ? '#16a34a' : ji === '大凶' ? '#7f1d1d' : (ji === '凶' || ji === '半凶') ? '#dc2626' : '#b8860b';
+                const pts = r.pts && r.pts.length ? r.pts : [{ x: r.x, y: r.y }];
+                const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+                const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+                const isArea = pts.length >= 2;
                 return (
                   <g key={'room' + i}>
-                    <circle cx={r.x} cy={r.y} r={HIT_R} fill="transparent" />
-                    <rect x={r.x - PIN_R * 1.2} y={r.y - PIN_R * 1.2} width={PIN_R * 2.4} height={PIN_R * 2.4} rx={PIN_R * 0.5}
-                      fill={col} stroke="#fff" strokeWidth={unit * 0.005} opacity={selRoom === i ? 1 : 0.9} />
-                    <HaloText x={r.x} y={r.y - PIN_R * 2.8} size={unit * 0.032} fill={col}>{r.type}</HaloText>
+                    {isArea ? (
+                      <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={col} fillOpacity={0.18} stroke={col} strokeWidth={unit * 0.006} />
+                    ) : (
+                      <>
+                        <circle cx={r.x} cy={r.y} r={HIT_R} fill="transparent" />
+                        <rect x={r.x - PIN_R * 1.2} y={r.y - PIN_R * 1.2} width={PIN_R * 2.4} height={PIN_R * 2.4} rx={PIN_R * 0.5}
+                          fill={col} stroke="#fff" strokeWidth={unit * 0.005} opacity={selRoom === i ? 1 : 0.9} />
+                      </>
+                    )}
+                    <HaloText x={cx} y={cy - PIN_R * 2.8} size={unit * 0.032} fill={col}>{r.type}{isArea ? `（${infos.length}山）` : ''}</HaloText>
                   </g>
                 );
               })}
+              {/* 區域描點中（多邊形草稿） */}
+              {areaDraft.length > 0 && (
+                <polygon points={areaDraft.map((p) => `${p.x},${p.y}`).join(' ')} fill="rgba(60,120,255,0.12)" stroke="#3c78ff" strokeWidth={unit * 0.005} strokeDasharray={`${unit * 0.02} ${unit * 0.012}`} />
+              )}
+              {areaDraft.map((p, i) => <circle key={'ad' + i} cx={p.x} cy={p.y} r={PIN_R * 0.8} fill="#3c78ff" stroke="#fff" strokeWidth={unit * 0.004} />)}
 
               {center && !showCompass && (
                 <g>
@@ -498,29 +573,55 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
           <div className="indoor-panel">
             <div className="indoor-panel-title">③ 房間標注（按宮位吉凶）</div>
             <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>
-              {sitM ? '按「🏠 標房」後在平面圖點房間位置，會依其所在宮位自動顯示吉凶與建議。' : '請先完成②設定坐向，才能計算各房間的吉凶。'}
+              {sitM ? '按「🏠 標房」：「單點」直接點房間；「區域」逐點描房間範圍再按完成（跨多個山會一拼分析）。' : '請先完成②設定坐向，才能計算各房間的吉凶。'}
             </div>
+            <div className="indoor-room-submode">
+              <button type="button" className={roomSubMode === 'point' ? 'on' : ''} onClick={() => { setRoomSubMode('point'); setAreaDraft([]); }}>單點</button>
+              <button type="button" className={roomSubMode === 'area' ? 'on' : ''} onClick={() => setRoomSubMode('area')}>區域（跨多山）</button>
+              {roomSubMode === 'area' && areaDraft.length > 0 && (
+                <>
+                  <button type="button" className="indoor-area-done" onClick={() => { setRooms((rs) => [...rs, { pts: areaDraft, type: '睡房', furniture: [] }]); setSelRoom(rooms.length); setAreaDraft([]); }}>✓ 完成（{areaDraft.length}點）</button>
+                  <button type="button" className="indoor-area-cancel" onClick={() => setAreaDraft([])}>✕ 取消</button>
+                </>
+              )}
+            </div>
+            {roomSubMode === 'area' && <div className="indoor-method-hint">在平面圖逐點描出房間範圍（至少 2-3 點成區域），完成後會分析涵蓋的所有山。</div>}
             {rooms.length === 0 && <div className="indoor-method-hint">尚未標注房間。</div>}
             {rooms.map((r, i) => {
-              const info = roomInfo(r);
-              const adv = roomAdvice(info, r.type);
-              const col = adv ? (adv.isGood ? '#16a34a' : adv.isBad ? '#c62828' : '#b8860b') : '#b8860b';
+              const infos = roomAnalysis(r);
+              const ji = roomJi(infos);
+              const col = ji === '吉' || ji === '半吉' ? '#16a34a' : ji === '大凶' ? '#7f1d1d' : (ji === '凶' || ji === '半凶') ? '#dc2626' : '#b8860b';
+              const isArea = r.pts && r.pts.length >= 2;
               return (
                 <div key={i} className={`indoor-room${selRoom === i ? ' sel' : ''}`} onClick={() => setSelRoom(selRoom === i ? null : i)}>
                   <div className="indoor-room-top">
                     <select value={r.type} onClick={(e) => e.stopPropagation()} onChange={(e) => setRooms((rs) => rs.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}>
                       {ROOM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
-                    {info && <span className="indoor-room-pal">{info.palaceName}宮・{info.dir}・{info.mountain}山</span>}
-                    {adv && <span className="indoor-room-ji" style={{ background: col }}>{adv.ji}</span>}
+                    <span className="indoor-room-pal">{isArea ? `區域・跨 ${infos.length} 山` : (infos[0] ? `${infos[0].palaceName}宮・${infos[0].dir}・${infos[0].mountain}山` : '')}</span>
+                    <span className="indoor-room-ji" style={{ background: col }}>{ji || '—'}</span>
                     <button type="button" className="indoor-room-del" onClick={(e) => { e.stopPropagation(); setRooms((rs) => rs.filter((_, j) => j !== i)); setSelRoom(null); }}>✕</button>
                   </div>
-                  {adv && (
-                    <div className="indoor-room-adv">
-                      <div className="indoor-room-facts">{adv.facts.join('；')}</div>
-                      <div>{adv.advice}</div>
+                  {infos.map((info, k) => {
+                    const adv = roomAdvice(info, r.type);
+                    return (
+                      <div key={k} className="indoor-room-adv">
+                        {isArea && <div className="indoor-room-mtn">▸ {info.palaceName}宮・{info.dir}・{info.mountain}山（{adv.ji}）</div>}
+                        <div className="indoor-room-facts">{adv.facts.join('；')}</div>
+                        <div>{adv.advice}</div>
+                      </div>
+                    );
+                  })}
+                  <div className="indoor-room-furn">
+                    <span className="indoor-room-furn-label">家具：</span>
+                    <div className="indoor-room-furn-chips">
+                      {COMMON_FURNITURE.map((f) => (
+                        <button key={f.n} type="button" className={`furn-chip${(r.furniture || []).includes(f.n) ? ' on' : ''}`}
+                          onClick={(e) => { e.stopPropagation(); setRooms((rs) => rs.map((x, j) => (j === i ? { ...x, furniture: (x.furniture || []).includes(f.n) ? (x.furniture || []).filter((y) => y !== f.n) : [...(x.furniture || []), f.n] } : x))); }}>{f.n}</button>
+                      ))}
                     </div>
-                  )}
+                  </div>
+                  {(r.furniture || []).length > 0 && <div className="indoor-room-furn-note">{furnitureNote(r, infos)}</div>}
                 </div>
               );
             })}
