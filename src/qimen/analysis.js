@@ -20,6 +20,21 @@ export const PALACE_SHORT = {
   6: '乾六', 7: '兌七', 8: '艮八', 9: '離九',
 };
 
+// 標記配色（與主盤一致）：破=綠 刑=紅 墓=灰 墓刑=紫；其餘黑色
+export function stemMarkClass(type) {
+  if (type === '刑') return 'mk-red';
+  if (type === '墓') return 'mk-grey';
+  if (type === '刑墓') return 'mk-purple';
+  return '';
+}
+export function palaceMarkClass(m) {
+  if (m === '破') return 'mk-green';
+  if (m === '刑') return 'mk-red';
+  if (m === '墓') return 'mk-grey';
+  if (m === '墓刑') return 'mk-purple';
+  return '';
+}
+
 // 本宮所有符號（含來源），供組合類象分組顯示與 AI 取用
 export function buildPalaceSymbols(p, result) {
   const data = result.palaces[p];

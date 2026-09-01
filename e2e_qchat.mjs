@@ -194,6 +194,67 @@ set = await page.evaluate(() => {
 });
 ok('重整後設定保留（書面/簡潔/遠程/男/女）', set.some((g) => g.label === '語氣' && g.on === '書面') && set.some((g) => g.label === '詳略' && g.on === '簡潔') && set.some((g) => g.label === '問事' && g.on === '遠程') && set.some((g) => g.label === '開盤人' && g.on === '男') && set.some((g) => g.label === '問事人' && g.on === '女'), set);
 
+console.log('\n[7c] 起盤時間自訂（上一個時辰問的，而家先開盤）');
+await page.evaluate(() => [...document.querySelectorAll('.qc-tool-btn')].find((b) => b.textContent.includes('新對話')).click());
+await sleep(200);
+// 還原近程（上一節測試遠程會存本機）
+await page.evaluate(() => {
+  const g = [...document.querySelectorAll('.qc-settings .q-group')].find((x) => x.querySelector('.q-label')?.textContent.trim() === '問事');
+  [...g.querySelectorAll('.seg button')].find((b) => b.textContent.trim() === '近程').click();
+});
+await sleep(150);
+// 預設此刻
+let cast = await page.evaluate(() => {
+  const row = document.querySelector('.qc-cast-row');
+  return { on: row.querySelector('.seg button.on')?.textContent.trim(), hasInput: !!row.querySelector('.qc-cast-input') };
+});
+ok('起盤時間預設此刻、無輸入框', cast.on === '此刻' && !cast.hasInput, cast);
+// 切自訂 → 輸入框出現
+await page.evaluate(() => [...document.querySelectorAll('.qc-cast-row .seg button')].find((b) => b.textContent.trim() === '自訂').click());
+await sleep(150);
+cast = await page.evaluate(() => ({ hasInput: !!document.querySelector('.qc-cast-input'), note: document.querySelector('.qc-cast-note')?.textContent.trim() || null }));
+ok('自訂出現時間輸入框＋提示', cast.hasInput && !!cast.note, cast);
+// 設 2026-05-16 11:38（固定參考盤）
+await page.evaluate(() => {
+  const i = document.querySelector('.qc-cast-input');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(i, '2026-05-16T11:38'); i.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await sleep(150);
+await type('佢會唔會返嚟？');
+await sendAndWait();
+cast = await state();
+ok('按自訂時間起盤（2026-5-16 11:38）', cast.chartHead && cast.chartHead.includes('2026-05-16 11:38'), cast.chartHead);
+
+console.log('\n[7d] 盤面 color coding（與主盤一致）');
+const cellOf = async (name) => page.evaluate((n) => {
+  const cell = [...document.querySelectorAll('.qc-chart-card .qc-cell')].find((c) => c.querySelector('.qc-pal')?.textContent.trim() === n);
+  if (!cell) return null;
+  return {
+    html: cell.className,
+    badges: [...cell.querySelectorAll('.mk-badge')].map((b) => b.textContent.trim()),
+    void: !!cell.querySelector('.qc-void'),
+    horse: !!cell.querySelector('.qc-horse'),
+    redStems: [...cell.querySelectorAll('.qc-stem.mk-red')].map((s) => s.textContent.trim()),
+    greyStems: [...cell.querySelectorAll('.qc-stem.mk-grey')].map((s) => s.textContent.trim()),
+    marks: [...cell.querySelectorAll('.mark')].map((m) => ({ t: m.textContent.trim(), cls: m.className })),
+    doorGreen: !!cell.querySelector('.qc-door.mk-green'),
+  };
+}, name);
+const kan = await cellOf('坎一');
+ok('坎一宮：事主紅徽章', kan && kan.badges.includes('事主'), kan);
+const li = await cellOf('離九');
+ok('離九宮：時干藍徽章', li && li.badges.includes('時干'), li);
+const kun = await cellOf('坤二');
+ok('坤二宮：空亡小圈＋馬星', kun && kun.void && kun.horse, kun);
+const dui = await cellOf('兌七');
+ok('兌七宮：空亡小圈', dui && dui.void, dui);
+const zhen = await cellOf('震三');
+ok('震三宮：戊擊刑干標紅', zhen && zhen.redStems.includes('戊'), zhen && zhen.redStems);
+ok('震三宮：刑標記紅色', zhen && zhen.marks.some((m) => m.t === '刑' && m.cls.includes('mk-red')), zhen && zhen.marks);
+ok('震三宮：門迫標記（破）綠色', zhen && zhen.marks.some((m) => m.t === '破' && m.cls.includes('mk-green')), zhen && zhen.marks);
+ok('門迫宮門字標綠', (await cellOf('坎一')).doorGreen || zhen.doorGreen, { kan: (await cellOf('坎一')).doorGreen, zhen: zhen.doorGreen });
+
 console.log('\n[8] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
 

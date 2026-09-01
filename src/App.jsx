@@ -15,7 +15,7 @@ import { useChartLibrary } from './library.js';
 import { allGeju } from './qimen/geju.js';
 import { shiZhuStem, CUSTOM_CATS } from './qimen/ask.js';
 import {
-  t, PALACE_NAME, PALACE_SHORT, buildPalaceSymbols, palaceMarkLabels,
+  t, PALACE_NAME, PALACE_SHORT, buildPalaceSymbols, palaceMarkLabels, stemMarkClass, palaceMarkClass,
   ASK_TYPES, PALACE_BRANCHES, resolveAsk, buildAskPayload,
 } from './qimen/analysis.js';
 // 洛书九宫布局：巽4 离9 坤2 / 震3 中5 兑7 / 艮8 坎1 乾6
@@ -34,20 +34,7 @@ const WAIGAN_POS = {
   6: { edge: 'bottom', style: { bottom: 0, left: '83.3%' } }, // 乾六宮：下（右下）
 };
 
-// 颜色：破=绿 刑=红 墓=灰 墓刑=紫；其余一律黑色
-function stemMarkClass(type) {
-  if (type === '刑') return 'mk-red';
-  if (type === '墓') return 'mk-grey';
-  if (type === '刑墓') return 'mk-purple';
-  return '';
-}
-function palaceMarkClass(m) {
-  if (m === '破') return 'mk-green';
-  if (m === '刑') return 'mk-red';
-  if (m === '墓') return 'mk-grey';
-  if (m === '墓刑') return 'mk-purple';
-  return '';
-}
+// 颜色：破=绿 刑=红 墓=灰 墓刑=紫（stemMarkClass／palaceMarkClass 見 qimen/analysis.js）
 
 function Stem({ text, type }) {
   return <div className={`stem ${stemMarkClass(type)}`}>{t(text)}</div>;
