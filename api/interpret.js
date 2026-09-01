@@ -333,6 +333,17 @@ ${qimenAskFacts(d)}
 - 若客人的問題與問事無關，親切回應並引導回正題。`;
 }
 
+// 白話（廣東話口語）→ 規範書面中文（內地可讀）；術語保留、不增刪內容
+function stdChinesePrompt(text) {
+  return `請把以下廣東話口語文字改寫為規範書面中文（內地通用的書面普通話），要求：
+- 保留全部原意；奇門遁甲與風水專有名詞（如用神、值符、空亡、門迫、擊刑、入墓、應期等）保持不變；
+- 只改寫語氣與用字（如「係」→「是」、「唔」→「不」、「嘅」→「的」、「咁」→「那麼」），不增刪內容、不加評論；
+- 直接輸出改寫後的文字，不要任何前後綴或引號。
+
+原文：
+${text}`;
+}
+
 // 奇門：AI 對話的問題分類（判斷問事類別／是否閒聊／是否新話題），只回 JSON
 const CHAT_TYPES = ['終身局', '求財', '事業工作', '感情婚姻', '疾病健康', '官司是非', '考試學業', '出行遠行', '行人尋人', '置業房產', '尋物', '自訂'];
 function qimenClassifyPrompt(question, history) {
@@ -467,7 +478,11 @@ export default async function handler(req, res) {
   const model = (reqModel && ALLOWED_MODELS.has(reqModel)) ? reqModel : (process.env.AI_MODEL || 'deepseek-v4-flash');
 
   let prompt;
-  if (task === 'qimenClassify') {
+  if (task === 'toStdChinese') {
+    const txt = (chart && chart.text) || (payload && payload.text) || '';
+    if (!String(txt).trim()) { res.status(400).json({ error: '缺少文字' }); return; }
+    prompt = stdChinesePrompt(String(txt).slice(0, 3000));
+  } else if (task === 'qimenClassify') {
     if (!question || !String(question).trim()) { res.status(400).json({ error: '缺少問題' }); return; }
     prompt = qimenClassifyPrompt(String(question).slice(0, 500), followups);
   } else if (task === 'qimenChat') {
@@ -507,6 +522,7 @@ export default async function handler(req, res) {
   // followups 由前端隨原 payload 一併送回，伺服器端重建上下文，避免 client 竄改 system/盤面資料。
   const isChat = task === 'qimenChat';
   const isClassify = task === 'qimenClassify';
+  const isTranslate = task === 'toStdChinese';
   const followQ = question && String(question).trim() ? String(question).trim().slice(0, 500) : '';
   const history = (Array.isArray(followups) ? followups : [])
     .filter((f) => f && typeof f.q === 'string' && typeof f.a === 'string')
@@ -530,7 +546,7 @@ export default async function handler(req, res) {
     const body = {
       model,
       messages,
-      temperature: isClassify ? 0.2 : 0.8,
+      temperature: isClassify ? 0.2 : isTranslate ? 0.3 : 0.8,
       max_tokens: isClassify ? 200 : 1800,
       thinking: { type: 'disabled' },
     };
