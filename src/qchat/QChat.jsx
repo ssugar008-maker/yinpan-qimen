@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { paipan } from '../qimen/engine.js';
 import { t, PALACE_NAME, PALACE_SHORT, buildAskPayload, resolveAsk } from '../qimen/analysis.js';
+import { shiZhuStem } from '../qimen/ask.js';
 import { useCloudStore } from '../cloud.js';
 import { aiInterpret } from '../ai.js';
 import AiText from '../AiText.jsx';
@@ -49,6 +50,15 @@ export default function QChat() {
   const [convId, setConvId] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  // 對話設定：語氣（白話＝港式口語／書面＝內地規範書面中文）、詳略、遠程取用神（開盤人／問事人性別）
+  const QC_SET_KEY = 'mo_qchat_settings_v1';
+  const [qcSet, setQcSet] = useState(() => {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(QC_SET_KEY) || '{}'); } catch { }
+    return { style: '白話', detail: '適中', mode: '近程', caster: '', querent: '', ...saved };
+  });
+  useEffect(() => { try { localStorage.setItem(QC_SET_KEY, JSON.stringify(qcSet)); } catch { } }, [qcSet]);
+  const toggleGender = (key, val) => setQcSet((s) => ({ ...s, [key]: s[key] === val ? '' : val }));
 
   // 由起盤時間重排盤面（paipan 對同一時間決定性一致）
   const result = useMemo(() => {
@@ -60,9 +70,9 @@ export default function QChat() {
   const chartKey = chartTime
     ? `${chartTime.getFullYear()}-${chartTime.getMonth() + 1}-${chartTime.getDate()} ${String(chartTime.getHours()).padStart(2, '0')}:${String(chartTime.getMinutes()).padStart(2, '0')}`
     : '';
-  // 對話預設近程（日干為事主）
-  const querent = { mode: '近程', caster: '', querent: '' };
-  const shiZhuPalace = result ? result.pillarMarkPalaces[2] : null;
+  // 事主取宮：近程＝日干落宮；遠程＝月干（開盤人與問事人同性別換陰陽），甲以值符論 —— 與主盤自動標記同一邏輯
+  const querent = { mode: qcSet.mode, caster: qcSet.caster, querent: qcSet.querent };
+  const shiZhuPalace = result ? ((shiZhuStem(result, querent) || {}).palace ?? null) : null;
   const shiGanPalace = result ? result.pillarMarkPalaces[3] : null;
   const askAnalysis = useMemo(
     () => (result && qtype ? resolveAsk({ result, qtype, querent, shiZhuPalace, shiGanPalace }) : null),
@@ -119,10 +129,11 @@ export default function QChat() {
       const qt = c.qtype || '自訂';
       if (c.newTopic || !qtype) setQtype(qt);
       const useQt = (c.newTopic || !qtype) ? qt : qtype;
-      const szp = r0.pillarMarkPalaces[2], sgp = r0.pillarMarkPalaces[3];
+      const szp = (shiZhuStem(r0, querent) || {}).palace ?? null;
+      const sgp = r0.pillarMarkPalaces[3];
       const ask = buildAskPayload({ result: r0, qtype: useQt, custom: useQt === '自訂' ? question : '', querent, shiZhuPalace: szp, shiGanPalace: sgp });
-      // 3) 對話式分析
-      const { text } = await aiInterpret({ task: 'qimenChat', ask, question, followups: historyOf(list) });
+      // 3) 對話式分析（帶語氣與詳略設定）
+      const { text } = await aiInterpret({ task: 'qimenChat', ask, question, followups: historyOf(list), chatStyle: qcSet.style, chatDetail: qcSet.detail });
       list = [...list, { role: 'ai', text }];
       setMsgs(list); saveConv(list, useQt, time);
     } catch (e) {
@@ -176,6 +187,59 @@ export default function QChat() {
           )}
         </div>
 
+        {/* 對話設定：語氣／詳略／遠程取用神 */}
+        <div className="qc-settings">
+          <div className="q-group">
+            <span className="q-label">語氣</span>
+            <div className="seg">
+              {['白話', '書面'].map((v) => (
+                <button key={v} type="button" className={qcSet.style === v ? 'on' : ''} onClick={() => setQcSet((s) => ({ ...s, style: v }))}
+                  title={v === '白話' ? '港式口語，親切隨和' : '內地規範書面中文，正式莊重'}>{v}</button>
+              ))}
+            </div>
+          </div>
+          <div className="q-group">
+            <span className="q-label">詳略</span>
+            <div className="seg">
+              {['簡潔', '適中', '詳細'].map((v) => (
+                <button key={v} type="button" className={qcSet.detail === v ? 'on' : ''} onClick={() => setQcSet((s) => ({ ...s, detail: v }))}
+                  title={v === '簡潔' ? '一針見血，只講結論' : v === '適中' ? '結論＋簡潔依據' : '逐層詳細講解'}>{v}</button>
+              ))}
+            </div>
+          </div>
+          <div className="q-group">
+            <span className="q-label">問事</span>
+            <div className="seg">
+              {['近程', '遠程'].map((v) => (
+                <button key={v} type="button" className={qcSet.mode === v ? 'on' : ''} onClick={() => setQcSet((s) => ({ ...s, mode: v }))}
+                  title={v === '近程' ? '問事人本人在場：日干為事主' : '分享給別人問事：月干取事主（同性別換陰陽）'}>{v}</button>
+              ))}
+            </div>
+          </div>
+          {qcSet.mode === '遠程' && (
+            <>
+              <div className="q-group">
+                <span className="q-label">開盤人</span>
+                <div className="seg">
+                  {['男', '女'].map((v) => <button key={v} type="button" className={qcSet.caster === v ? 'on' : ''} onClick={() => toggleGender('caster', v)}>{v}</button>)}
+                </div>
+              </div>
+              <div className="q-group">
+                <span className="q-label">問事人</span>
+                <div className="seg">
+                  {['男', '女'].map((v) => <button key={v} type="button" className={qcSet.querent === v ? 'on' : ''} onClick={() => toggleGender('querent', v)}>{v}</button>)}
+                </div>
+              </div>
+            </>
+          )}
+          {chartTime && shiZhuPalace && (
+            <span className="q-result">事主落 {PALACE_SHORT[shiZhuPalace]}宮（{qcSet.mode}）</span>
+          )}
+        </div>
+        {qcSet.mode === '遠程' && (!qcSet.caster || !qcSet.querent) && (
+          <div className="qc-remote-hint">遠程問事：請先設定開盤人與問事人性別，先至好以月干取事主（未設則暫以日干論）。</div>
+        )}
+
         <div className="qc-msgs">
           {msgs.length === 0 && (
             <div className="qc-empty">
@@ -227,7 +291,7 @@ export default function QChat() {
           />
           <button type="button" className="fu-send" onClick={send} disabled={busy || !input.trim()}>送出</button>
         </div>
-        <div className="sym-combo-note">（第一句問題即以此刻時間起盤；其後追問沿用同一盤，換話題會自動重新取用用神；「起新盤」則以新時刻再排。分析口徑與「AI 問事解讀」一致）</div>
+        <div className="sym-combo-note">（第一句問題即以此刻時間起盤；其後追問沿用同一盤，換話題會自動重新取用用神；「起新盤」則以新時刻再排。語氣可選白話／書面，詳略可選簡潔／適中／詳細；遠程問事以月干取事主，與主盤自動標記同一邏輯。分析口徑與「AI 問事解讀」一致）</div>
       </div>
     </div>
   );

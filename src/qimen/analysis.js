@@ -283,6 +283,7 @@ export function buildAskPayload(input) {
       horse: `${result.horse.zhi}（落${PALACE_NAME[result.horse.palace]}）`,
       fuFan: a.fuFan,
       shiZhu: shiZhuPalace ? PALACE_NAME[shiZhuPalace] : '', shiGan: shiGanPalace ? PALACE_NAME[shiGanPalace] : '',
+      shiZhuLabel: input.querent && input.querent.mode === '遠程' ? '事主（月干・遠程）' : '事主（日干）',
     },
     yongshen: a.rows.filter((r) => r.palace).map((r) => ({
       name: r.disp, role: r.role, palace: PALACE_NAME[r.palace], wx: PALACE_INFO[r.palace].wx,
