@@ -257,9 +257,8 @@ const ASK_GUIDE = {
   尋物: '尋物斷法：時干所落之宮代表遺失物品，日干所落之宮代表事主（尋物者）。事主宮剋物品宮→容易找到；物品宮剋事主宮→較難找；物品宮生事主宮→物品會回來、易尋；事主宮生物品宮→要費力去尋；同宮→物品就在事主附近；相鄰→不遠；相隔越遠越費時；伏吟主慢、反吟主快（已算好的生克、快慢、距離見「推算依據」，請直接引用）。物品宮內的符號組合，用來推斷物品可能在哪裡、被什麼遮蓋或伴隨（高處／低處、金屬容器內、木器旁、被布遮蓋…），指出哪些符號提供了哪些線索。回答重點：能否找到（易／難、快／慢）、最可能在哪（方位＋具體環境）、往哪個方位與什麼類型的地方找。',
   自選用神: '使用者自行指定了用神及其代表的人事物。請圍繞各用神所落之宮分析：該宮五行與宮內符號組合（象意疊加）如何呼應其代表之事；宮與宮之間的五行生剋與四害強弱（見「宮位關係」）；用神宮空亡時以先天轉宮論（見「空亡轉先天」）。指出哪些符號支持哪些判斷，並給出明確的吉凶傾向與建議。',
 };
-// 奇門：問事全盤解讀（用神取用＋應期＋宮宮關係四害＋空亡轉先天）
-// ask payload: { qtype, custom, chart{...}, yongshen[...], timing[], relations[], kong[{who,from,to,double,toSymbols[]}], facts[] }
-function qimenAskPrompt(d) {
+// 奇門問事：盤面事實與分析資料區塊（問事解讀與 AI 對話共用，保證分析口徑一致）
+function qimenAskFacts(d) {
   const c = d.chart || {};
   const symLines = (symbols) => (symbols || []).map((s) => `【${s.label}・${s.name}】象意：${s.meaning || ''}｜屬性：${(s.attrs || []).join('、')}`).join('　');
   const ysLines = (d.yongshen || []).map((y) => {
@@ -270,12 +269,7 @@ function qimenAskPrompt(d) {
   const factLines = (d.facts || []).map((x) => `- ${x}`).join('\n');
   const relLines = (d.relations || []).map((x) => `- ${x}`).join('\n');
   const kongLines = (d.kong || []).map((k) => `- ${k.who}落${k.from}逢空亡 → 八成信息轉至其先天位（${k.to}）${k.double ? '；該宮亦逢空亡，為「雙空亡」，事情更虛、更難捉摸，須待雙重出空' : ''}。轉宮（${k.to}）符號：${symLines(k.toSymbols)}`).join('\n');
-  const isCustom = d.qtype === '自訂';
-  const guide = ASK_GUIDE[d.qtype] ? `\n【類別指引】${ASK_GUIDE[d.qtype]}\n` : '';
-  return `以下是奇門遁甲陰盤時盤的「問事」全盤推算。問事類別：「${d.qtype}」${isCustom && d.custom ? `，使用者所問：「${d.custom}」` : ''}。
-${guide}
-
-【盤面事實】
+  return `【盤面事實】
 四柱：${(c.pillars || []).join('　')}（${c.dun}遁${c.ju}局）　旬首：${c.xunShou || ''}
 時柱旬空：${c.kong || ''}${c.kongPalaces ? `（落${c.kongPalaces}）` : ''}
 值符 ${c.zhiFu || ''}；值使 ${c.zhiShi || ''}　馬星：${c.horse || ''}
@@ -291,7 +285,17 @@ ${relLines || '（各宮無直接生剋或同宮）'}
 ${kongLines || '（無空亡轉宮）'}
 
 【應期線索】（已按規則算好，請直接引用，勿自行發明地支）
-${timingLines || '（無特別線索）'}
+${timingLines || '（無特別線索）'}`;
+}
+
+// 奇門：問事全盤解讀（用神取用＋應期＋宮宮關係四害＋空亡轉先天）
+// ask payload: { qtype, custom, chart{...}, yongshen[...], timing[], relations[], kong[{who,from,to,double,toSymbols[]}], facts[] }
+function qimenAskPrompt(d) {
+  const isCustom = d.qtype === '自訂';
+  const guide = ASK_GUIDE[d.qtype] ? `\n【類別指引】${ASK_GUIDE[d.qtype]}\n` : '';
+  return `以下是奇門遁甲陰盤時盤的「問事」全盤推算。問事類別：「${d.qtype}」${isCustom && d.custom ? `，使用者所問：「${d.custom}」` : ''}。
+${guide}
+${qimenAskFacts(d)}
 
 請以奇門遁甲大師角度，給出全盤問事解讀，條理清楚：
 1. 吉凶總斷：此事整體成敗吉凶，一句話定調（依用神旺衰、宮宮生剋與四害強弱、空亡轉宮等綜合判斷）。
@@ -300,6 +304,41 @@ ${timingLines || '（無特別線索）'}
 4. 應期判斷：結合上述應期線索，給出最可能的應期尺度（快／慢）與地支月份或日期傾向，並說明依據。
 5. 建議趨避：具體可行的建議（方位、時機、行為風水：哪些方位宜動宜靜、可移可拆之物）。
 整體 520 字內，分點清楚。`;
+}
+
+// 奇門：AI 對話（問事時間起盤，對話口吻；分析資料與問事解讀同一口徑）
+function qimenChatPrompt(d) {
+  const guide = ASK_GUIDE[d.qtype] ? `\n【類別指引】${ASK_GUIDE[d.qtype]}\n` : '';
+  return `你正在以奇門遁甲師傅身分與客人對話。以下是於問事時刻所起的陰盤奇門時盤，以及已按規則算好的分析資料（用神取用、宮宮關係、空亡轉宮、應期等，請直接引用，勿自行發明）：
+${guide}
+${qimenAskFacts(d)}
+
+【對話方式要求】
+- 像真人師傅與客人面談：先直接回答重點（吉凶／可否／如何），再用口語簡潔說明依據（用神落宮、生剋四害、空亡轉宮、應期），語氣專業而親切。
+- 不要列點、不要分「1.2.3.」、不要重複盤面資料；像對話一樣自然分段。
+- 若客人的問題與問事無關，親切回應並引導回正題。
+- 220 字內。`;
+}
+
+// 奇門：AI 對話的問題分類（判斷問事類別／是否閒聊／是否新話題），只回 JSON
+const CHAT_TYPES = ['終身局', '求財', '事業工作', '感情婚姻', '疾病健康', '官司是非', '考試學業', '出行遠行', '行人尋人', '置業房產', '尋物', '自訂'];
+function qimenClassifyPrompt(question, history) {
+  const hist = (history || []).slice(-3).map((h) => `問：${h.q}／答：${String(h.a).slice(0, 60)}`).join('；');
+  return `使用者正在與奇門遁甲師傅對話。請判斷使用者最新這句話：
+「${question}」
+${hist ? `（上文：${hist}）` : ''}
+
+只回 JSON 物件（不要任何其他文字或代碼框）：
+{
+  "smalltalk": true 或 false,
+  "newTopic": true 或 false,
+  "qtype": "最貼近的問事類別",
+  "reply": "若純閒聊：以師傅口吻寫一句親切回應並引導對方問事（30 字內）；否則填空字串"
+}
+規則：
+- smalltalk＝純打招呼、閒聊、與問事無關（此時 qtype 填空字串）。
+- newTopic＝這句話開啟了與上文不同的事情（無上文時為 true；純追問細節為 false）。
+- qtype 只能是：${CHAT_TYPES.join('、')}。問性格／命運／一生 → 終身局；問遺失物品 → 尋物；問感情對象 → 感情婚姻；拿不定主意 → 自訂。`;
 }
 
 // 二十四天星（玄道風水）：d = { sit, face, sitStar, faceStar, stars[{mountain,dir,palace,star,ji,wx,group,governs,rel}] }
@@ -415,7 +454,13 @@ export default async function handler(req, res) {
   const model = (reqModel && ALLOWED_MODELS.has(reqModel)) ? reqModel : (process.env.AI_MODEL || 'deepseek-v4-flash');
 
   let prompt;
-  if (task === 'star24') {
+  if (task === 'qimenClassify') {
+    if (!question || !String(question).trim()) { res.status(400).json({ error: '缺少問題' }); return; }
+    prompt = qimenClassifyPrompt(String(question).slice(0, 500), followups);
+  } else if (task === 'qimenChat') {
+    if (!ask || !ask.qtype || !ask.chart) { res.status(400).json({ error: '缺少問事資料' }); return; }
+    prompt = qimenChatPrompt(ask);
+  } else if (task === 'star24') {
     if (!chart || !Array.isArray(chart.stars) || !chart.stars.length) { res.status(400).json({ error: '缺少二十四天星資料' }); return; }
     if (theme === '自訂' && !(custom && String(custom).trim())) { res.status(400).json({ error: '請輸入想問的問題' }); return; }
     prompt = star24Prompt(chart, theme || '整體佈局', custom || '');
@@ -447,25 +492,39 @@ export default async function handler(req, res) {
 
   // 追問模式（多輪）：盤面 prompt 作首條 user 訊息，接歷史問答，最後是本次追問。
   // followups 由前端隨原 payload 一併送回，伺服器端重建上下文，避免 client 竄改 system/盤面資料。
+  const isChat = task === 'qimenChat';
+  const isClassify = task === 'qimenClassify';
   const followQ = question && String(question).trim() ? String(question).trim().slice(0, 500) : '';
   const history = (Array.isArray(followups) ? followups : [])
     .filter((f) => f && typeof f.q === 'string' && typeof f.a === 'string')
     .slice(-12)
     .flatMap((f) => [{ role: 'user', content: f.q.slice(0, 2000) }, { role: 'assistant', content: f.a.slice(0, 3000) }]);
-  const messages = [{ role: 'system', content: SYS }, { role: 'user', content: prompt }, ...history];
-  if (followQ) messages.push({ role: 'user', content: `以上是本盤先前的問答。使用者追問：「${followQ}」。請承接上文直接回答，不必重複盤面資料；答案具體簡潔，260 字內。` });
+  const sysContent = isChat
+    ? `${SYS}你現在正以對話方式與客人傾談（不是寫報告），回答要自然、親切、口語。`
+    : SYS;
+  const messages = [{ role: 'system', content: sysContent }, { role: 'user', content: prompt }, ...history];
+  if (followQ && !isClassify) {
+    messages.push({
+      role: 'user',
+      content: isChat
+        ? `客人問：「${followQ}」。請承接上文，用對話口吻直接回答（先講結論再講依據，親切專業，不必重複盤面資料，220 字內）。`
+        : `以上是本盤先前的問答。使用者追問：「${followQ}」。請承接上文直接回答，不必重複盤面資料；答案具體簡潔，260 字內。`,
+    });
+  }
 
   try {
+    const body = {
+      model,
+      messages,
+      temperature: isClassify ? 0.2 : 0.8,
+      max_tokens: isClassify ? 200 : 1800,
+      thinking: { type: 'disabled' },
+    };
+    if (isClassify) body.response_format = { type: 'json_object' }; // DeepSeek JSON 模式
     const r = await fetch(`${base}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.8,
-        max_tokens: 1800,
-        thinking: { type: 'disabled' },
-      }),
+      body: JSON.stringify(body),
     });
     if (!r.ok) { const txt = await r.text(); res.status(502).json({ error: `AI 服務回應錯誤（${r.status}）`, detail: txt.slice(0, 300) }); return; }
     const data = await r.json();
@@ -473,6 +532,22 @@ export default async function handler(req, res) {
     const text = ((msg && msg.content) || '').trim();
     const u = data && data.usage;
     const usage = u ? { pt: u.prompt_tokens || 0, ct: u.completion_tokens || 0 } : null;
+    if (isClassify) {
+      // 寬容解析 JSON（容許代碼框包裹），失敗則回退預設分類
+      let parsed = null;
+      try {
+        const m = text.match(/\{[\s\S]*\}/);
+        parsed = m ? JSON.parse(m[0]) : null;
+      } catch { parsed = null; }
+      const out = {
+        smalltalk: !!(parsed && parsed.smalltalk),
+        newTopic: !parsed || parsed.newTopic !== false,
+        qtype: parsed && CHAT_TYPES.includes(parsed.qtype) ? parsed.qtype : '自訂',
+        reply: parsed && typeof parsed.reply === 'string' ? parsed.reply.slice(0, 120) : '',
+      };
+      res.status(200).json({ json: out, model, usage });
+      return;
+    }
     res.status(200).json({ text: text || '（AI 未回傳內容）', model, usage });
   } catch (e) {
     res.status(500).json({ error: 'AI 呼叫失敗', detail: String(e && e.message || e) });

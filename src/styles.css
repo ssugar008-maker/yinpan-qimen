@@ -1193,6 +1193,64 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
   .tx-duty-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
+/* ── AI 對話問事 ── */
+.qc-body { display: flex; flex-direction: column; }
+.qc-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.qc-tool-btn {
+  font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 14px; cursor: pointer;
+  border: 1px solid var(--line); background: #fff; color: #6a5f4f; font-family: inherit;
+}
+.qc-tool-btn:hover:not(:disabled) { border-color: #c9b6e4; color: #6b3fa0; }
+.qc-tool-btn:disabled { opacity: 0.45; cursor: default; }
+.qc-hist {
+  font-size: 12px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px;
+  font-family: inherit; background: #fff; color: #6a5f4f; max-width: 180px;
+}
+.qc-msgs {
+  display: flex; flex-direction: column; gap: 8px; max-height: 56vh; overflow-y: auto;
+  padding: 4px 2px; margin-bottom: 8px;
+}
+.qc-empty {
+  font-size: 13px; color: #8a8073; text-align: center; line-height: 1.9;
+  padding: 22px 12px; background: #faf7f1; border: 1px dashed #e0d6c2; border-radius: 10px;
+}
+.qc-msg { display: flex; }
+.qc-msg.user { justify-content: flex-end; }
+.qc-msg.ai { justify-content: flex-start; }
+.qc-bubble {
+  max-width: 86%; padding: 9px 13px; border-radius: 14px; font-size: 14px; line-height: 1.7;
+}
+.qc-msg.user .qc-bubble { background: #6b3fa0; color: #fff; border-bottom-right-radius: 4px; }
+.qc-msg.ai .qc-bubble { background: #f7f3fc; border: 1px solid #e2d3f5; color: #333; border-bottom-left-radius: 4px; }
+.qc-thinking { color: #9a86c0; font-style: italic; }
+.qc-chart-card {
+  align-self: center; width: 100%; background: #fdfbf6; border: 1px solid #e8dfc9;
+  border-radius: 10px; padding: 8px 10px;
+}
+.qc-chart-head { font-size: 12px; font-weight: 700; color: #8b5a2b; margin-bottom: 6px; text-align: center; }
+.qc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; max-width: 340px; margin: 0 auto; }
+.qc-cell {
+  border: 1px solid #eee5d5; border-radius: 6px; background: #fff; padding: 4px 2px 3px;
+  text-align: center; min-height: 62px;
+}
+.qc-cell.center { background: #f6f1e6; }
+.qc-cell.ys { border-color: #6b3fa0; box-shadow: 0 0 0 1.5px #d9c9f2; }
+.qc-cell.kong { opacity: 0.55; }
+.qc-pal { font-size: 10px; color: #8a8073; font-weight: 700; }
+.qc-sym { font-size: 11px; color: #4a4238; line-height: 1.35; }
+.qc-door { font-weight: 700; }
+.qc-gan { font-size: 10px; color: #a89a86; }
+.qc-ys { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-top: 6px; }
+.qc-ys-chip {
+  font-size: 10px; font-weight: 700; color: #6b3fa0; background: #f3edfb;
+  border: 1px solid #e2d3f5; padding: 1px 8px; border-radius: 9px;
+}
+.qc-input-row { display: flex; gap: 6px; }
+.qc-input {
+  flex: 1; padding: 10px 12px; font-size: 14px; border: 1px solid var(--line);
+  border-radius: 10px; font-family: inherit; box-sizing: border-box;
+}
+
 /* 玄空：八宅命卦九宮格 */
 .bazhai-grid .xk-cell { min-height: 74px; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
 .bazhai-cell.good { background: #eaf4ea; border-color: #b7d8b7; }

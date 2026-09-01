@@ -28,8 +28,25 @@ page.on('request', (req) => {
 const xp = async (expr) => (await page.$$(`xpath/${expr}`))[0] || null;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 固定排盤時間（PR#7 起預設為當前時間，測試需固定盤）；依 label 文字找 select，避免欄位順序變動
+const setChart = async () => {
+  await page.evaluate(() => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+    const byLabel = (label, v) => {
+      const lab = [...document.querySelectorAll('form label')].find((l) => l.firstChild && l.firstChild.nodeType === 3 && l.firstChild.textContent.trim() === label);
+      if (!lab) return;
+      const sel = lab.querySelector('select');
+      setter.call(sel, v); sel.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    byLabel('年', '2026'); byLabel('月', '5'); byLabel('日', '16'); byLabel('時', '11'); byLabel('分', '38');
+  });
+  await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '排盤').click());
+  await sleep(400);
+};
+
 await page.goto(URL, { waitUntil: 'networkidle2' });
 await page.waitForSelector('.grid');
+await setChart();
 
 // ── 問事解讀面板 ──
 console.log('\n[1] 問事解讀面板（陰盤奇門）');
@@ -39,7 +56,7 @@ const askChips = await page.evaluate(() => {
   const p = [...document.querySelectorAll('.ask-panel')][0];
   return [...p.querySelectorAll('.ai-theme-chip')].map((b) => b.textContent.trim());
 });
-ok('12 個問事類別（含尋物、自選用神）', askChips.length === 12 && askChips[0] === '求財' && askChips.includes('尋物') && askChips.includes('自選用神') && askChips.at(-1) === '自訂', askChips);
+ok('13 個問事類別（含終身局、尋物、自選用神）', askChips.length === 13 && askChips[0] === '終身局' && askChips.includes('求財') && askChips.includes('尋物') && askChips.includes('自選用神') && askChips.at(-1) === '自訂', askChips);
 const ysRows = await page.evaluate(() => [...document.querySelectorAll('.ask-ys-row')].map((r) => ({
   name: r.querySelector('.ask-ys-name').textContent.trim(),
   palace: r.querySelector('.ask-ys-palace').textContent.trim(),
@@ -242,6 +259,7 @@ ok('對話串已存檔（求財 key，thread 1 輪）', Array.isArray(askLibEntr
 console.log('\n[4] 重整後問事存檔與對話串保留');
 await page.reload({ waitUntil: 'networkidle2' });
 await page.waitForSelector('.grid');
+await setChart(); // 重整後預設回當前時間，需重排固定盤
 await sleep(300);
 askState = await page.evaluate(() => {
   const p = document.querySelector('.ask-panel');
