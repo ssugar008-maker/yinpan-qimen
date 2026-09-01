@@ -40,7 +40,7 @@ export async function aiInterpret(payload) {
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `AI 失敗（${r.status}）`);
-  const out = { text: (data.text || '').trim(), model: data.model || getAiModelId(), usage: data.usage || null };
+  const out = { text: (data.text || '').trim(), model: data.model || getAiModelId(), usage: data.usage || null, json: data.json || null };
   recordUsage(out.model, out.usage);
   return out;
 }

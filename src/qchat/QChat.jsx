@@ -1,0 +1,234 @@
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { paipan } from '../qimen/engine.js';
+import { t, PALACE_NAME, PALACE_SHORT, buildAskPayload, resolveAsk } from '../qimen/analysis.js';
+import { useCloudStore } from '../cloud.js';
+import { aiInterpret } from '../ai.js';
+import AiText from '../AiText.jsx';
+
+// ── AI 對話問事：用家自然對話提問，於提問時刻起奇門時盤，AI 以對話口吻分析 ──
+// 分析口徑與「AI 問事解讀」完全一致（共用 qimen/analysis.js 全鏈：用神／四害／空亡轉宮／應期）。
+const GRID5 = [4, 9, 2, 3, 5, 7, 8, 1, 6];
+const CHAT_KEY = 'qimen_chat_v1';
+const entry = (v) => (typeof v === 'string' ? { messages: [] } : (v || null));
+
+// 迷你九宮格（對話內盤面卡片用）：宮名＋神星門干簡列，用神宮高亮
+function MiniGrid({ result, ysPalaces }) {
+  return (
+    <div className="qc-grid">
+      {GRID5.map((p) => {
+        const d = result.palaces[p];
+        if (!d) return null;
+        const isYs = ysPalaces && ysPalaces.includes(p);
+        return (
+          <div key={p} className={`qc-cell${p === 5 ? ' center' : ''}${isYs ? ' ys' : ''}${d.isKong ? ' kong' : ''}`}>
+            <div className="qc-pal">{PALACE_SHORT[p]}</div>
+            {p !== 5 && (
+              <>
+                <div className="qc-sym">{t(d.god)}</div>
+                <div className="qc-sym">{(d.stars || []).map(t).join('')}</div>
+                <div className="qc-sym qc-door">{t(d.door)}</div>
+                <div className="qc-gan">{(d.tianGan || []).map(t).join('')}／{t(d.diGan)}</div>
+              </>
+            )}
+            {p === 5 && <div className="qc-sym">中宮</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function QChat() {
+  const [msgs, setMsgs] = useState([]); // { role:'user'|'ai'|'chart', text?, time? }
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [chartTime, setChartTime] = useState(null); // Date of current chart
+  const [qtype, setQtype] = useState('');
+  const [chatLib, setChatLib] = useCloudStore('qimen_chat', CHAT_KEY, {});
+  const [convId, setConvId] = useState(null);
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // 由起盤時間重排盤面（paipan 對同一時間決定性一致）
+  const result = useMemo(() => {
+    if (!chartTime) return null;
+    try {
+      return paipan(chartTime.getFullYear(), chartTime.getMonth() + 1, chartTime.getDate(), chartTime.getHours(), chartTime.getMinutes());
+    } catch { return null; }
+  }, [chartTime]);
+  const chartKey = chartTime
+    ? `${chartTime.getFullYear()}-${chartTime.getMonth() + 1}-${chartTime.getDate()} ${String(chartTime.getHours()).padStart(2, '0')}:${String(chartTime.getMinutes()).padStart(2, '0')}`
+    : '';
+  // 對話預設近程（日干為事主）
+  const querent = { mode: '近程', caster: '', querent: '' };
+  const shiZhuPalace = result ? result.pillarMarkPalaces[2] : null;
+  const shiGanPalace = result ? result.pillarMarkPalaces[3] : null;
+  const askAnalysis = useMemo(
+    () => (result && qtype ? resolveAsk({ result, qtype, querent, shiZhuPalace, shiGanPalace }) : null),
+    [result, qtype],
+  );
+
+  useEffect(() => { if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' }); }, [msgs, busy]);
+
+  // 存檔（按起盤時間）
+  const saveConv = (list, qt, time) => {
+    if (!time) return;
+    const id = `${time.getFullYear()}-${String(time.getMonth() + 1).padStart(2, '0')}-${String(time.getDate()).padStart(2, '0')} ${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
+    setChatLib((lib) => ({ ...lib, [id]: { messages: list, qtype: qt, ts: Date.now() } }));
+  };
+
+  // 對話歷史 → followups 格式（圖表卡片除外）
+  const historyOf = (list) => {
+    const out = [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].role === 'user') {
+        const next = list.slice(i + 1).find((m) => m.role === 'ai');
+        if (next) out.push({ q: list[i].text, a: next.text });
+      }
+    }
+    return out.slice(-12);
+  };
+
+  const send = async () => {
+    const question = input.trim();
+    if (!question || busy) return;
+    setInput(''); setErr(''); setBusy(true);
+    let time = chartTime;
+    let list = [...msgs, { role: 'user', text: question }];
+    // 第一句問題 → 於此刻起盤
+    if (!time) {
+      time = new Date();
+      list = [...list, { role: 'chart', time: time.toISOString() }];
+      setChartTime(time);
+      setConvId(`${time.getFullYear()}-${String(time.getMonth() + 1).padStart(2, '0')}-${String(time.getDate()).padStart(2, '0')} ${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`);
+    }
+    setMsgs(list);
+    try {
+      const r0 = result || paipan(time.getFullYear(), time.getMonth() + 1, time.getDate(), time.getHours(), time.getMinutes());
+      // 1) 分類（問事類別／閒聊／新話題）
+      const cls = await aiInterpret({ task: 'qimenClassify', question, followups: historyOf(list) });
+      const c = cls.json || { smalltalk: false, newTopic: true, qtype: '自訂', reply: '' };
+      if (c.smalltalk) {
+        list = [...list, { role: 'ai', text: c.reply || '你好，想問什麼事？講出來，我起個盤幫你看。' }];
+        setMsgs(list); saveConv(list, qtype, time);
+        setBusy(false);
+        return;
+      }
+      // 2) 新話題或未分類 → 重新取用神
+      const qt = c.qtype || '自訂';
+      if (c.newTopic || !qtype) setQtype(qt);
+      const useQt = (c.newTopic || !qtype) ? qt : qtype;
+      const szp = r0.pillarMarkPalaces[2], sgp = r0.pillarMarkPalaces[3];
+      const ask = buildAskPayload({ result: r0, qtype: useQt, custom: useQt === '自訂' ? question : '', querent, shiZhuPalace: szp, shiGanPalace: sgp });
+      // 3) 對話式分析
+      const { text } = await aiInterpret({ task: 'qimenChat', ask, question, followups: historyOf(list) });
+      list = [...list, { role: 'ai', text }];
+      setMsgs(list); saveConv(list, useQt, time);
+    } catch (e) {
+      setErr(String((e && e.message) || e));
+    }
+    setBusy(false);
+    if (inputRef.current) inputRef.current.focus();
+  };
+
+  // 新盤：保留對話，下一條問題起新盤
+  const newChart = () => {
+    setChartTime(null); setQtype(''); setErr('');
+    setMsgs((m) => [...m, { role: 'ai', text: '好，而家幫你起個新盤。想問什麼？' }]);
+  };
+  // 全新對話
+  const newConv = () => {
+    setMsgs([]); setChartTime(null); setQtype(''); setConvId(null); setErr('');
+  };
+  // 載入歷史對話
+  const loadConv = (id) => {
+    const e = entry(chatLib[id]);
+    if (!e || !e.messages) return;
+    const time = new Date(id.replace(/(\d{4})-(\d{1,2})-(\d{1,2}) (\d{2}):(\d{2})/, '$1-$2-$3T$4:$5'));
+    setMsgs(e.messages); setQtype(e.qtype || ''); setConvId(id);
+    setChartTime(isNaN(time) ? null : time);
+    setErr('');
+  };
+  const convList = Object.entries(chatLib)
+    .map(([id, v]) => ({ id, ...(entry(v) || {}) }))
+    .filter((x) => x.messages && x.messages.length)
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+    .slice(0, 20);
+
+  const ysPalaces = askAnalysis ? askAnalysis.rows.filter((r) => r.palace).map((r) => r.palace) : [];
+
+  return (
+    <div className="panel qc">
+      <div className="panel-head">AI 對話問事（講出問題，自動起盤）</div>
+      <div className="panel-body qc-body">
+        <div className="qc-toolbar">
+          <button type="button" className="qc-tool-btn" onClick={newChart} disabled={!chartTime}>🔄 起新盤</button>
+          <button type="button" className="qc-tool-btn" onClick={newConv} disabled={!msgs.length}>✨ 新對話</button>
+          {convList.length > 0 && (
+            <select className="qc-hist" value="" onChange={(e) => { if (e.target.value) loadConv(e.target.value); }}>
+              <option value="">歷史對話…</option>
+              {convList.map((c) => {
+                const firstQ = (c.messages.find((m) => m.role === 'user') || {}).text || '';
+                return <option key={c.id} value={c.id}>{c.id}｜{firstQ.slice(0, 12)}</option>;
+              })}
+            </select>
+          )}
+        </div>
+
+        <div className="qc-msgs">
+          {msgs.length === 0 && (
+            <div className="qc-empty">
+              直接用口語問事，會即時以問事時刻起奇門時盤分析。<br />
+              例：「我下個月簽約順唔順？」「佢對我有無意思？」「我個銀包唔見咗，喺邊？」
+            </div>
+          )}
+          {msgs.map((m, i) => {
+            if (m.role === 'chart') {
+              const ct = new Date(m.time);
+              const r = (() => { try { return paipan(ct.getFullYear(), ct.getMonth() + 1, ct.getDate(), ct.getHours(), ct.getMinutes()); } catch { return null; } })();
+              return (
+                <div key={i} className="qc-chart-card">
+                  <div className="qc-chart-head">
+                    🀄 已起盤：{ct.getFullYear()}-{String(ct.getMonth() + 1).padStart(2, '0')}-{String(ct.getDate()).padStart(2, '0')} {String(ct.getHours()).padStart(2, '0')}:{String(ct.getMinutes()).padStart(2, '0')}
+                    {r ? `　${t(r.dun)}遁${r.ju}局` : ''}{qtype ? `　問事類別：${qtype}` : ''}
+                  </div>
+                  {r && <MiniGrid result={r} ysPalaces={ysPalaces} />}
+                  {askAnalysis && (
+                    <div className="qc-ys">
+                      {askAnalysis.rows.filter((x) => x.palace).map((x, j) => (
+                        <span key={j} className="qc-ys-chip">{x.disp}→{PALACE_SHORT[x.palace]}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return (
+              <div key={i} className={`qc-msg ${m.role}`}>
+                <div className="qc-bubble">{m.role === 'ai' ? <AiText text={m.text} /> : m.text}</div>
+              </div>
+            );
+          })}
+          {busy && <div className="qc-msg ai"><div className="qc-bubble qc-thinking">師傅思考中…</div></div>}
+          <div ref={bottomRef} />
+        </div>
+
+        {err && <div className="ai-error">{err}</div>}
+        <div className="qc-input-row">
+          <input
+            ref={inputRef}
+            className="qc-input"
+            value={input}
+            placeholder="講出你想問的事…"
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+            disabled={busy}
+          />
+          <button type="button" className="fu-send" onClick={send} disabled={busy || !input.trim()}>送出</button>
+        </div>
+        <div className="sym-combo-note">（第一句問題即以此刻時間起盤；其後追問沿用同一盤，換話題會自動重新取用用神；「起新盤」則以新時刻再排。分析口徑與「AI 問事解讀」一致）</div>
+      </div>
+    </div>
+  );
+}
