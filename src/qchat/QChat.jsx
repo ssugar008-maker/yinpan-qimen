@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { paipan } from '../qimen/engine.js';
-import { t, PALACE_NAME, PALACE_SHORT, buildAskPayload, resolveAsk } from '../qimen/analysis.js';
+import { t, PALACE_NAME, PALACE_SHORT, buildAskPayload, resolveAsk, stemMarkClass, palaceMarkClass } from '../qimen/analysis.js';
 import { shiZhuStem } from '../qimen/ask.js';
 import { useCloudStore } from '../cloud.js';
 import { aiInterpret } from '../ai.js';
@@ -12,26 +12,45 @@ const GRID5 = [4, 9, 2, 3, 5, 7, 8, 1, 6];
 const CHAT_KEY = 'qimen_chat_v1';
 const entry = (v) => (typeof v === 'string' ? { messages: [] } : (v || null));
 
-// 迷你九宮格（對話內盤面卡片用）：宮名＋神星門干簡列，用神宮高亮
-function MiniGrid({ result, ysPalaces }) {
+// 迷你九宮格（對話內盤面卡片用）：與主盤同一 color coding ——
+// 干：刑紅／墓灰／墓刑紫；門迫綠；宮位標記 破綠／刑紅／墓灰／墓刑紫；事主紅／時干藍／馬星綠圈／空亡小圈；用神宮紫框
+function MiniGrid({ result, ysPalaces, shiZhuPalace, shiGanPalace }) {
   return (
     <div className="qc-grid">
       {GRID5.map((p) => {
         const d = result.palaces[p];
         if (!d) return null;
         const isYs = ysPalaces && ysPalaces.includes(p);
+        const isVoid = result.kongPalaces.includes(p);
+        const isHorse = result.horse.palace === p;
+        const tianStems = (d.tianGan || []).map((s, i) => ({ s, type: d.stemMarks?.[i]?.type }));
+        const diStart = (d.tianGan || []).length;
+        const diStems = [d.diGan, ...(d.diGanExtra ? [d.diGanExtra] : [])].filter(Boolean)
+          .map((s, i) => ({ s, type: d.stemMarks?.[diStart + i]?.type }));
         return (
-          <div key={p} className={`qc-cell${p === 5 ? ' center' : ''}${isYs ? ' ys' : ''}${d.isKong ? ' kong' : ''}`}>
+          <div key={p} className={`qc-cell${p === 5 ? ' center' : ''}${isYs ? ' ys' : ''}`}>
+            <div className="qc-badges">
+              {shiZhuPalace === p && <span className="mk-badge mk-shizhu">事主</span>}
+              {shiGanPalace === p && <span className="mk-badge mk-shigan">時干</span>}
+              {isHorse && <span className="horse-badge qc-horse">馬</span>}
+              {isVoid && <span className="void-circle qc-void" title="空亡" />}
+            </div>
             <div className="qc-pal">{PALACE_SHORT[p]}</div>
-            {p !== 5 && (
+            {p !== 5 ? (
               <>
                 <div className="qc-sym">{t(d.god)}</div>
                 <div className="qc-sym">{(d.stars || []).map(t).join('')}</div>
-                <div className="qc-sym qc-door">{t(d.door)}</div>
-                <div className="qc-gan">{(d.tianGan || []).map(t).join('')}／{t(d.diGan)}</div>
+                <div className={`qc-sym qc-door${d.menpo ? ' mk-green' : ''}`}>{t(d.door)}</div>
+                <div className="qc-gan">
+                  {tianStems.map((x, i) => <span key={'t' + i} className={`qc-stem ${stemMarkClass(x.type)}`}>{t(x.s)}</span>)}
+                  <span className="qc-gan-sep">／</span>
+                  {diStems.map((x, i) => <span key={'d' + i} className={`qc-stem ${stemMarkClass(x.type)}`}>{t(x.s)}</span>)}
+                </div>
+                {(d.marks || []).length > 0 && (
+                  <div className="qc-marks">{(d.marks || []).map((m) => <span key={m} className={`mark ${palaceMarkClass(m)}`}>{t(m)}</span>)}</div>
+                )}
               </>
-            )}
-            {p === 5 && <div className="qc-sym">中宮</div>}
+            ) : <div className="qc-sym">中宮</div>}
           </div>
         );
       })}
@@ -59,6 +78,16 @@ export default function QChat() {
   });
   useEffect(() => { try { localStorage.setItem(QC_SET_KEY, JSON.stringify(qcSet)); } catch { } }, [qcSet]);
   const toggleGender = (key, val) => setQcSet((s) => ({ ...s, [key]: s[key] === val ? '' : val }));
+  // 起盤時間：預設此刻；自訂＝對方問問題的原始時辰（上一個時辰問、而家先開盤）。不存本機，屬當次操作
+  const [castMode, setCastMode] = useState('now'); // now | custom
+  const [castCustom, setCastCustom] = useState('');
+  const castTime = () => {
+    if (castMode === 'custom' && castCustom) {
+      const d = new Date(castCustom);
+      if (!isNaN(d)) return d;
+    }
+    return new Date();
+  };
 
   // 由起盤時間重排盤面（paipan 對同一時間決定性一致）
   const result = useMemo(() => {
@@ -106,9 +135,9 @@ export default function QChat() {
     setInput(''); setErr(''); setBusy(true);
     let time = chartTime;
     let list = [...msgs, { role: 'user', text: question }];
-    // 第一句問題 → 於此刻起盤
+    // 第一句問題 → 起盤（預設此刻；自訂起盤時間則用對方問問題的原始時辰）
     if (!time) {
-      time = new Date();
+      time = castTime();
       list = [...list, { role: 'chart', time: time.toISOString() }];
       setChartTime(time);
       setConvId(`${time.getFullYear()}-${String(time.getMonth() + 1).padStart(2, '0')}-${String(time.getDate()).padStart(2, '0')} ${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`);
@@ -236,6 +265,29 @@ export default function QChat() {
             <span className="q-result">事主落 {PALACE_SHORT[shiZhuPalace]}宮（{qcSet.mode}）</span>
           )}
         </div>
+
+        {/* 起盤時間：預設此刻；自訂＝對方原本問問題的時辰（適用於下一只盤） */}
+        <div className="qc-settings qc-cast-row">
+          <div className="q-group">
+            <span className="q-label">起盤時間</span>
+            <div className="seg">
+              <button type="button" className={castMode === 'now' ? 'on' : ''} onClick={() => setCastMode('now')} title="以提問當刻起盤">此刻</button>
+              <button type="button" className={castMode === 'custom' ? 'on' : ''} onClick={() => setCastMode('custom')} title="對方上一個時辰問的，而家先開盤">自訂</button>
+            </div>
+          </div>
+          {castMode === 'custom' && (
+            <input
+              type="datetime-local"
+              className="qc-cast-input"
+              value={castCustom}
+              onChange={(e) => setCastCustom(e.target.value)}
+              title="對方問問題的原始時間（下一只盤生效）"
+            />
+          )}
+          {castMode === 'custom' && (
+            <span className="qc-cast-note">{chartTime ? '下一只盤生效（先「起新盤」再問）' : '第一句問題即按此時間起盤'}</span>
+          )}
+        </div>
         {qcSet.mode === '遠程' && (!qcSet.caster || !qcSet.querent) && (
           <div className="qc-remote-hint">遠程問事：請先設定開盤人與問事人性別，先至好以月干取事主（未設則暫以日干論）。</div>
         )}
@@ -257,7 +309,7 @@ export default function QChat() {
                     🀄 已起盤：{ct.getFullYear()}-{String(ct.getMonth() + 1).padStart(2, '0')}-{String(ct.getDate()).padStart(2, '0')} {String(ct.getHours()).padStart(2, '0')}:{String(ct.getMinutes()).padStart(2, '0')}
                     {r ? `　${t(r.dun)}遁${r.ju}局` : ''}{qtype ? `　問事類別：${qtype}` : ''}
                   </div>
-                  {r && <MiniGrid result={r} ysPalaces={ysPalaces} />}
+                  {r && <MiniGrid result={r} ysPalaces={ysPalaces} shiZhuPalace={shiZhuPalace} shiGanPalace={shiGanPalace} />}
                   {askAnalysis && (
                     <div className="qc-ys">
                       {askAnalysis.rows.filter((x) => x.palace).map((x, j) => (
