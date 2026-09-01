@@ -118,7 +118,7 @@ s = await state();
 ok('載入歷史對話（訊息與盤面還原）', s.charts >= 1 && s.msgs.some((m) => m.user && m.text.includes('簽約')), { charts: s.charts, msgs: s.msgs.length });
 
 console.log('\n[7b] 對話設定：語氣／詳略／遠程取用神');
-// 預設值
+// 預設值（遠程＋開盤人男：用家本人為男性開盤者，別人多數遠程問事）
 let set = await page.evaluate(() => {
   const bar = document.querySelector('.qc-settings');
   if (!bar) return null;
@@ -127,11 +127,13 @@ let set = await page.evaluate(() => {
     on: g.querySelector('.seg button.on')?.textContent.trim() || null,
     opts: [...g.querySelectorAll('.seg button')].map((b) => b.textContent.trim()),
   }));
-  return groups;
+  return { groups, hint: !!document.querySelector('.qc-remote-hint') };
 });
-ok('設定列存在（語氣/詳略/問事）', set && set.length >= 3, set);
-ok('預設 白話／適中／近程', set && set[0].on === '白話' && set[1].on === '適中' && set[2].on === '近程', set);
-ok('近程時無性別選擇', set && !set.some((g) => g.label === '開盤人'), set.map((g) => g.label));
+ok('設定列存在（語氣/詳略/問事）', set && set.groups.length >= 3, set);
+ok('預設 白話／適中／遠程', set && set.groups[0].on === '白話' && set.groups[1].on === '適中' && set.groups[2].on === '遠程', set.groups);
+ok('遠程預設 → 性別選擇預設顯示', set && set.groups.some((g) => g.label === '開盤人') && set.groups.some((g) => g.label === '問事人'), set.groups.map((g) => g.label));
+ok('開盤人預設男、問事人未設', set && set.groups.find((g) => g.label === '開盤人').on === '男' && !set.groups.find((g) => g.label === '問事人').on, set.groups);
+ok('問事人未設 → 提示顯示', set.hint);
 // 切 書面＋簡潔 → 下一個回答的請求帶 chatStyle/chatDetail
 await page.evaluate(() => {
   const bar = document.querySelector('.qc-settings');
@@ -145,30 +147,34 @@ await sleep(200);
 await type('咁我幾時簽最好？');
 await sendAndWait();
 ok('請求帶 書面＋簡潔', lastChatBody && lastChatBody.chatStyle === '書面' && lastChatBody.chatDetail === '簡潔', lastChatBody && { s: lastChatBody.chatStyle, d: lastChatBody.chatDetail });
-// 切遠程 → 性別選擇出現
+// 近程 ↔ 遠程切換：近程收起性別；切回遠程再顯示
+await page.evaluate(() => {
+  const bar = document.querySelector('.qc-settings');
+  const g = [...bar.querySelectorAll('.q-group')].find((x) => x.querySelector('.q-label')?.textContent.trim() === '問事');
+  [...g.querySelectorAll('.seg button')].find((b) => b.textContent.trim() === '近程').click();
+});
+await sleep(200);
+set = await page.evaluate(() => ({
+  groups: [...document.querySelectorAll('.qc-settings .q-group')].map((g) => g.querySelector('.q-label')?.textContent.trim()),
+}));
+ok('近程時收起性別選擇', !set.groups.includes('開盤人') && !set.groups.includes('問事人'), set.groups);
 await page.evaluate(() => {
   const bar = document.querySelector('.qc-settings');
   const g = [...bar.querySelectorAll('.q-group')].find((x) => x.querySelector('.q-label')?.textContent.trim() === '問事');
   [...g.querySelectorAll('.seg button')].find((b) => b.textContent.trim() === '遠程').click();
 });
 await sleep(200);
-set = await page.evaluate(() => {
-  const bar = document.querySelector('.qc-settings');
-  return {
-    groups: [...bar.querySelectorAll('.q-group')].map((g) => g.querySelector('.q-label')?.textContent.trim()),
-    hint: !!document.querySelector('.qc-remote-hint'),
-  };
-});
-ok('遠程出現開盤人/問事人性別', set.groups.includes('開盤人') && set.groups.includes('問事人'), set.groups);
-ok('未設性別有提示', set.hint);
-// 設定 開盤人男、問事人女 → 顯示事主落宮（遠程）
+set = await page.evaluate(() => ({
+  groups: [...document.querySelectorAll('.qc-settings .q-group')].map((g) => g.querySelector('.q-label')?.textContent.trim()),
+  hint: !!document.querySelector('.qc-remote-hint'),
+}));
+ok('切回遠程再顯示性別', set.groups.includes('開盤人') && set.groups.includes('問事人'), set.groups);
+ok('問事人未設 → 提示顯示', set.hint);
+// 開盤人預設男（不用再點）；只設問事人女 → 顯示事主落宮（遠程）
 await page.evaluate(() => {
   const bar = document.querySelector('.qc-settings');
-  const pick = (label, v) => {
-    const g = [...bar.querySelectorAll('.q-group')].find((x) => x.querySelector('.q-label')?.textContent.trim() === label);
-    [...g.querySelectorAll('.seg button')].find((b) => b.textContent.trim() === v).click();
-  };
-  pick('開盤人', '男'); pick('問事人', '女');
+  const g = [...bar.querySelectorAll('.q-group')].find((x) => x.querySelector('.q-label')?.textContent.trim() === '問事人');
+  [...g.querySelectorAll('.seg button')].find((b) => b.textContent.trim() === '女').click();
 });
 await sleep(200);
 set = await page.evaluate(() => ({
@@ -182,7 +188,7 @@ await type('佢對我有無意思？');
 await sendAndWait();
 ok('遠程 payload 標註月干事主', lastChatBody && lastChatBody.ask && lastChatBody.ask.chart.shiZhuLabel === '事主（月干・遠程）', lastChatBody && lastChatBody.ask.chart.shiZhuLabel);
 // 設定存本機
-const savedSet = await page.evaluate(() => JSON.parse(localStorage.getItem('mo_qchat_settings_v1') || '{}'));
+const savedSet = await page.evaluate(() => JSON.parse(localStorage.getItem('mo_qchat_settings_v2') || '{}'));
 ok('設定已存本機', savedSet.style === '書面' && savedSet.detail === '簡潔' && savedSet.mode === '遠程' && savedSet.caster === '男' && savedSet.querent === '女', savedSet);
 await page.reload({ waitUntil: 'networkidle2' });
 await page.waitForSelector('.tabs');

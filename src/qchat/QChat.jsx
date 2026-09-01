@@ -70,11 +70,12 @@ export default function QChat() {
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   // 對話設定：語氣（白話＝港式口語／書面＝內地規範書面中文）、詳略、遠程取用神（開盤人／問事人性別）
-  const QC_SET_KEY = 'mo_qchat_settings_v1';
+  // 預設：遠程＋開盤人男（開盤人固定為男性用家本人；別人多數透過遠程問事）。問事人性別按問事者逐次選。
+  const QC_SET_KEY = 'mo_qchat_settings_v2';
   const [qcSet, setQcSet] = useState(() => {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(QC_SET_KEY) || '{}'); } catch { }
-    return { style: '白話', detail: '適中', mode: '近程', caster: '', querent: '', ...saved };
+    return { style: '白話', detail: '適中', mode: '遠程', caster: '男', querent: '', ...saved };
   });
   useEffect(() => { try { localStorage.setItem(QC_SET_KEY, JSON.stringify(qcSet)); } catch { } }, [qcSet]);
   const toggleGender = (key, val) => setQcSet((s) => ({ ...s, [key]: s[key] === val ? '' : val }));

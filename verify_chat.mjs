@@ -86,6 +86,9 @@ r = await call({ task: 'qimenChat', ask: askRemote, question: 'x' });
 ok('chat 盤面事實用遠程標註', r.msgs[1].content.includes('事主（月干・遠程）'), null);
 const askNear = buildAskPayload({ result, qtype: '求財', querent: { mode: '近程', caster: '', querent: '' }, shiZhuPalace: result.pillarMarkPalaces[2], shiGanPalace: result.pillarMarkPalaces[3] });
 ok('近程維持日干標註', askNear.chart.shiZhuLabel === '事主（日干）', askNear.chart.shiZhuLabel);
+// 遠程未設性別 → 事主暫以日干論（與用神表落宮一致），標註說明
+const askRemoteUnset = buildAskPayload({ result, qtype: '求財', querent: { mode: '遠程', caster: '男', querent: '' }, shiZhuPalace: null, shiGanPalace: result.pillarMarkPalaces[3] });
+ok('遠程未設性別 → 暫以日干論並標註', askRemoteUnset.chart.shiZhuLabel.includes('暫以日干') && askRemoteUnset.chart.shiZhu === askNear.chart.shiZhu, { label: askRemoteUnset.chart.shiZhuLabel, sz: askRemoteUnset.chart.shiZhu });
 
 console.log('\n[4] 分析口徑一致性（buildAskPayload vs 既有結構）');
 ok('用神含生門與戊', ask.yongshen.some((y) => y.name === '生門') && ask.yongshen.some((y) => y.name === '戊'));

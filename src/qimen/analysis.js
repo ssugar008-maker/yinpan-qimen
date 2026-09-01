@@ -287,6 +287,7 @@ export function resolveAsk({ result, qtype, customYs = [], querent, shiZhuPalace
 // 組裝送 API 的 ask payload（與 AskPanel 一致）
 export function buildAskPayload(input) {
   const { result, qtype, custom = '', shiZhuPalace, shiGanPalace } = input;
+  const isRemote = !!(input.querent && input.querent.mode === '遠程');
   const a = resolveAsk(input);
   return {
     qtype, custom: qtype === '自訂' ? custom.trim() : '',
@@ -297,8 +298,10 @@ export function buildAskPayload(input) {
       zhiShi: `${t(result.zhiShi.door)} 落${PALACE_NAME[result.zhiShi.palace]}`,
       horse: `${result.horse.zhi}（落${PALACE_NAME[result.horse.palace]}）`,
       fuFan: a.fuFan,
-      shiZhu: shiZhuPalace ? PALACE_NAME[shiZhuPalace] : '', shiGan: shiGanPalace ? PALACE_NAME[shiGanPalace] : '',
-      shiZhuLabel: input.querent && input.querent.mode === '遠程' ? '事主（月干・遠程）' : '事主（日干）',
+      // 遠程未設性別時事主暫以日干論（與用神表 dayStem 落宮一致），並在標註說明
+      shiZhu: (shiZhuPalace || (isRemote ? result.pillarMarkPalaces[2] : null)) ? PALACE_NAME[shiZhuPalace || result.pillarMarkPalaces[2]] : '',
+      shiGan: shiGanPalace ? PALACE_NAME[shiGanPalace] : '',
+      shiZhuLabel: isRemote ? (shiZhuPalace ? '事主（月干・遠程）' : '事主（暫以日干論・遠程未設性別）') : '事主（日干）',
     },
     yongshen: a.rows.filter((r) => r.palace).map((r) => ({
       name: r.disp, role: r.role, palace: PALACE_NAME[r.palace], wx: PALACE_INFO[r.palace].wx,
