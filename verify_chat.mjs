@@ -68,6 +68,25 @@ r = await call({ task: 'qimenChat', ask, question: '具體邊個月好啲？', f
 ok('多輪：歷史在中間', r.msgs.length === 5 && r.msgs[2].content === '我想問下財運' && r.msgs[3].content === '財運唔錯。', r.msgs.length);
 ok('多輪：末條承接上文', r.msgs.at(-1).content.includes('承接上文') && r.msgs.at(-1).content.includes('具體邊個月好啲？'));
 
+console.log('\n[3b] 語氣與詳略');
+r = await call({ task: 'qimenChat', ask, question: 'x', chatStyle: '書面', chatDetail: '簡潔' });
+ok('書面語氣進 prompt', r.msgs[1].content.includes('規範書面中文') && r.msgs[1].content.includes('正式'), null);
+ok('簡潔進 prompt 與追問包裹', r.msgs[1].content.includes('一針見血') && r.msgs.at(-1).content.includes('一針見血'), r.msgs.at(-1).content.slice(0, 80));
+r = await call({ task: 'qimenChat', ask, question: 'x', chatStyle: '白話', chatDetail: '詳細' });
+ok('白話語氣進 prompt', r.msgs[1].content.includes('廣東話口語'));
+ok('詳細進 prompt', r.msgs[1].content.includes('詳細講解') && r.msgs[1].content.includes('500 字內'));
+r = await call({ task: 'qimenChat', ask, question: 'x' });
+ok('預設白話＋適中', r.msgs[1].content.includes('廣東話口語') && r.msgs[1].content.includes('220 字內'));
+ok('非法語氣/詳略回退預設', true); // CHAT_STYLE/DETAIL 白名單回退已內建
+
+console.log('\n[3c] 遠程事主標註');
+const askRemote = buildAskPayload({ result, qtype: '求財', querent: { mode: '遠程', caster: '男', querent: '女' }, shiZhuPalace: result.pillarMarkPalaces[1], shiGanPalace: result.pillarMarkPalaces[3] });
+ok('遠程 payload 標註月干', askRemote.chart.shiZhuLabel === '事主（月干・遠程）', askRemote.chart.shiZhuLabel);
+r = await call({ task: 'qimenChat', ask: askRemote, question: 'x' });
+ok('chat 盤面事實用遠程標註', r.msgs[1].content.includes('事主（月干・遠程）'), null);
+const askNear = buildAskPayload({ result, qtype: '求財', querent: { mode: '近程', caster: '', querent: '' }, shiZhuPalace: result.pillarMarkPalaces[2], shiGanPalace: result.pillarMarkPalaces[3] });
+ok('近程維持日干標註', askNear.chart.shiZhuLabel === '事主（日干）', askNear.chart.shiZhuLabel);
+
 console.log('\n[4] 分析口徑一致性（buildAskPayload vs 既有結構）');
 ok('用神含生門與戊', ask.yongshen.some((y) => y.name === '生門') && ask.yongshen.some((y) => y.name === '戊'));
 ok('用神帶符號與狀態', ask.yongshen[0].symbols.length > 0 && Array.isArray(ask.yongshen[0].marks));

@@ -273,7 +273,7 @@ function qimenAskFacts(d) {
 四柱：${(c.pillars || []).join('　')}（${c.dun}遁${c.ju}局）　旬首：${c.xunShou || ''}
 時柱旬空：${c.kong || ''}${c.kongPalaces ? `（落${c.kongPalaces}）` : ''}
 值符 ${c.zhiFu || ''}；值使 ${c.zhiShi || ''}　馬星：${c.horse || ''}
-${c.fuFan ? `九星${c.fuFan}。` : ''}事主（日干）落 ${c.shiZhu || '未定'}；時干（所問之事）落 ${c.shiGan || ''}。
+${c.fuFan ? `九星${c.fuFan}。` : ''}${c.shiZhuLabel || '事主（日干）'}落 ${c.shiZhu || '未定'}；時干（所問之事）落 ${c.shiGan || ''}。
 
 【用神取用與落宮】（各宮符號的象意屬性已附）
 ${ysLines || '（自訂問題：請依問題自行取用用神，並先說明取用理由）'}
@@ -306,18 +306,31 @@ ${qimenAskFacts(d)}
 整體 520 字內，分點清楚。`;
 }
 
+// 奇門 AI 對話：語氣（白話＝港式口語／書面＝內地規範書面中文）與詳略（簡潔／適中／詳細）
+const CHAT_STYLE = {
+  白話: '用自然廣東話口語（如「係」「唔」「嘅」「咁」「啲」），親切隨和，像師傅同客人面對面傾談。',
+  書面: '用規範書面中文（內地通用的書面普通話），選字正式準確、語氣莊重專業，避免口語與方言用字。',
+};
+const CHAT_DETAIL = {
+  簡潔: '一針見血：只講結論與最關鍵的一句依據，不多解釋，80 字內。',
+  適中: '先講結論，再簡潔講依據，自然分段，220 字內。',
+  詳細: '詳細講解：結論、用神落宮、宮宮生剋與四害強弱、空亡轉宮、應期逐層講清楚，可分段，500 字內。',
+};
 // 奇門：AI 對話（問事時間起盤，對話口吻；分析資料與問事解讀同一口徑）
-function qimenChatPrompt(d) {
+function qimenChatPrompt(d, opts = {}) {
+  const style = CHAT_STYLE[opts.style] || CHAT_STYLE['白話'];
+  const detail = CHAT_DETAIL[opts.detail] || CHAT_DETAIL['適中'];
   const guide = ASK_GUIDE[d.qtype] ? `\n【類別指引】${ASK_GUIDE[d.qtype]}\n` : '';
   return `你正在以奇門遁甲師傅身分與客人對話。以下是於問事時刻所起的陰盤奇門時盤，以及已按規則算好的分析資料（用神取用、宮宮關係、空亡轉宮、應期等，請直接引用，勿自行發明）：
 ${guide}
 ${qimenAskFacts(d)}
 
 【對話方式要求】
-- 像真人師傅與客人面談：先直接回答重點（吉凶／可否／如何），再用口語簡潔說明依據（用神落宮、生剋四害、空亡轉宮、應期），語氣專業而親切。
+- 語氣：${style}
+- 詳略：${detail}
+- 像真人師傅與客人面談：先直接回答重點（吉凶／可否／如何），再說明依據（用神落宮、生剋四害、空亡轉宮、應期）。
 - 不要列點、不要分「1.2.3.」、不要重複盤面資料；像對話一樣自然分段。
-- 若客人的問題與問事無關，親切回應並引導回正題。
-- 220 字內。`;
+- 若客人的問題與問事無關，親切回應並引導回正題。`;
 }
 
 // 奇門：AI 對話的問題分類（判斷問事類別／是否閒聊／是否新話題），只回 JSON
@@ -446,7 +459,7 @@ export default async function handler(req, res) {
 
   let payload = req.body;
   if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
-  const { task, theme, custom, context, palace, symbols, chart, find, compare, ask, question, followups, system, door, bazhai, star24 } = payload || {};
+  const { task, theme, custom, context, palace, symbols, chart, find, compare, ask, question, followups, system, door, bazhai, star24, chatStyle, chatDetail } = payload || {};
 
   // 模型選擇：前端可選 flash（快速）/ pro（深度），白名單驗證，預設 flash
   const ALLOWED_MODELS = new Set(['deepseek-v4-flash', 'deepseek-v4-pro']);
@@ -459,7 +472,7 @@ export default async function handler(req, res) {
     prompt = qimenClassifyPrompt(String(question).slice(0, 500), followups);
   } else if (task === 'qimenChat') {
     if (!ask || !ask.qtype || !ask.chart) { res.status(400).json({ error: '缺少問事資料' }); return; }
-    prompt = qimenChatPrompt(ask);
+    prompt = qimenChatPrompt(ask, { style: chatStyle, detail: chatDetail });
   } else if (task === 'star24') {
     if (!chart || !Array.isArray(chart.stars) || !chart.stars.length) { res.status(400).json({ error: '缺少二十四天星資料' }); return; }
     if (theme === '自訂' && !(custom && String(custom).trim())) { res.status(400).json({ error: '請輸入想問的問題' }); return; }
@@ -504,10 +517,11 @@ export default async function handler(req, res) {
     : SYS;
   const messages = [{ role: 'system', content: sysContent }, { role: 'user', content: prompt }, ...history];
   if (followQ && !isClassify) {
+    const detailRule = CHAT_DETAIL[chatDetail] || CHAT_DETAIL['適中'];
     messages.push({
       role: 'user',
       content: isChat
-        ? `客人問：「${followQ}」。請承接上文，用對話口吻直接回答（先講結論再講依據，親切專業，不必重複盤面資料，220 字內）。`
+        ? `客人問：「${followQ}」。請承接上文直接回答（語氣與詳略照上方要求：${detailRule}不必重複盤面資料）。`
         : `以上是本盤先前的問答。使用者追問：「${followQ}」。請承接上文直接回答，不必重複盤面資料；答案具體簡潔，260 字內。`,
     });
   }

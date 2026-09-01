@@ -14,11 +14,13 @@ page.on('pageerror', (e) => errors.push(String(e.message)));
 page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
 
 let chatCalls = 0;
+let lastChatBody = null;
 await page.setRequestInterception(true);
 page.on('request', (req) => {
   if (req.url().includes('/api/interpret')) {
     let body = {};
     try { body = JSON.parse(req.postData() || '{}'); } catch { }
+    if (body.task === 'qimenChat') lastChatBody = body;
     if (body.task === 'qimenClassify') {
       const q = body.question || '';
       const smalltalk = /你好|早晨|hi/i.test(q);
@@ -114,6 +116,83 @@ await page.select('.qc-hist', await page.evaluate(() => document.querySelector('
 await sleep(400);
 s = await state();
 ok('載入歷史對話（訊息與盤面還原）', s.charts >= 1 && s.msgs.some((m) => m.user && m.text.includes('簽約')), { charts: s.charts, msgs: s.msgs.length });
+
+console.log('\n[7b] 對話設定：語氣／詳略／遠程取用神');
+// 預設值
+let set = await page.evaluate(() => {
+  const bar = document.querySelector('.qc-settings');
+  if (!bar) return null;
+  const groups = [...bar.querySelectorAll('.q-group')].map((g) => ({
+    label: g.querySelector('.q-label')?.textContent.trim(),
+    on: g.querySelector('.seg button.on')?.textContent.trim() || null,
+    opts: [...g.querySelectorAll('.seg button')].map((b) => b.textContent.trim()),
+  }));
+  return groups;
+});
+ok('設定列存在（語氣/詳略/問事）', set && set.length >= 3, set);
+ok('預設 白話／適中／近程', set && set[0].on === '白話' && set[1].on === '適中' && set[2].on === '近程', set);
+ok('近程時無性別選擇', set && !set.some((g) => g.label === '開盤人'), set.map((g) => g.label));
+// 切 書面＋簡潔 → 下一個回答的請求帶 chatStyle/chatDetail
+await page.evaluate(() => {
+  const bar = document.querySelector('.qc-settings');
+  const pick = (label, v) => {
+    const g = [...bar.querySelectorAll('.q-group')].find((x) => x.querySelector('.q-label')?.textContent.trim() === label);
+    [...g.querySelectorAll('.seg button')].find((b) => b.textContent.trim() === v).click();
+  };
+  pick('語氣', '書面'); pick('詳略', '簡潔');
+});
+await sleep(200);
+await type('咁我幾時簽最好？');
+await sendAndWait();
+ok('請求帶 書面＋簡潔', lastChatBody && lastChatBody.chatStyle === '書面' && lastChatBody.chatDetail === '簡潔', lastChatBody && { s: lastChatBody.chatStyle, d: lastChatBody.chatDetail });
+// 切遠程 → 性別選擇出現
+await page.evaluate(() => {
+  const bar = document.querySelector('.qc-settings');
+  const g = [...bar.querySelectorAll('.q-group')].find((x) => x.querySelector('.q-label')?.textContent.trim() === '問事');
+  [...g.querySelectorAll('.seg button')].find((b) => b.textContent.trim() === '遠程').click();
+});
+await sleep(200);
+set = await page.evaluate(() => {
+  const bar = document.querySelector('.qc-settings');
+  return {
+    groups: [...bar.querySelectorAll('.q-group')].map((g) => g.querySelector('.q-label')?.textContent.trim()),
+    hint: !!document.querySelector('.qc-remote-hint'),
+  };
+});
+ok('遠程出現開盤人/問事人性別', set.groups.includes('開盤人') && set.groups.includes('問事人'), set.groups);
+ok('未設性別有提示', set.hint);
+// 設定 開盤人男、問事人女 → 顯示事主落宮（遠程）
+await page.evaluate(() => {
+  const bar = document.querySelector('.qc-settings');
+  const pick = (label, v) => {
+    const g = [...bar.querySelectorAll('.q-group')].find((x) => x.querySelector('.q-label')?.textContent.trim() === label);
+    [...g.querySelectorAll('.seg button')].find((b) => b.textContent.trim() === v).click();
+  };
+  pick('開盤人', '男'); pick('問事人', '女');
+});
+await sleep(200);
+set = await page.evaluate(() => ({
+  result: document.querySelector('.qc-settings .q-result')?.textContent.trim() || null,
+  hint: !!document.querySelector('.qc-remote-hint'),
+}));
+ok('顯示事主落宮（遠程）', set.result && set.result.includes('事主落') && set.result.includes('遠程'), set.result);
+ok('設好性別後提示消失', !set.hint);
+// 遠程下問事 → payload 的 shiZhuLabel 為遠程月干
+await type('佢對我有無意思？');
+await sendAndWait();
+ok('遠程 payload 標註月干事主', lastChatBody && lastChatBody.ask && lastChatBody.ask.chart.shiZhuLabel === '事主（月干・遠程）', lastChatBody && lastChatBody.ask.chart.shiZhuLabel);
+// 設定存本機
+const savedSet = await page.evaluate(() => JSON.parse(localStorage.getItem('mo_qchat_settings_v1') || '{}'));
+ok('設定已存本機', savedSet.style === '書面' && savedSet.detail === '簡潔' && savedSet.mode === '遠程' && savedSet.caster === '男' && savedSet.querent === '女', savedSet);
+await page.reload({ waitUntil: 'networkidle2' });
+await page.waitForSelector('.tabs');
+await (await page.$$("xpath///button[contains(@class,'tab') and contains(text(),'AI 對話')]"))[0].click();
+await page.waitForSelector('.qc');
+set = await page.evaluate(() => {
+  const bar = document.querySelector('.qc-settings');
+  return [...bar.querySelectorAll('.q-group')].map((g) => ({ label: g.querySelector('.q-label')?.textContent.trim(), on: g.querySelector('.seg button.on')?.textContent.trim() || null }));
+});
+ok('重整後設定保留（書面/簡潔/遠程/男/女）', set.some((g) => g.label === '語氣' && g.on === '書面') && set.some((g) => g.label === '詳略' && g.on === '簡潔') && set.some((g) => g.label === '問事' && g.on === '遠程') && set.some((g) => g.label === '開盤人' && g.on === '男') && set.some((g) => g.label === '問事人' && g.on === '女'), set);
 
 console.log('\n[8] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
