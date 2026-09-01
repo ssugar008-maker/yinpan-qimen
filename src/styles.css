@@ -1212,6 +1212,18 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
   font-family: inherit; background: #fff; color: #4a4238;
 }
 .qc-cast-note { font-size: 11px; color: #a89a86; }
+.qc-num-input {
+  width: 76px; padding: 4px 8px; font-size: 12px; border: 1px solid var(--line);
+  border-radius: 8px; font-family: inherit; background: #fff; color: #4a4238; box-sizing: border-box;
+}
+.qc-std-btn {
+  display: block; margin-top: 6px; margin-left: auto; font-size: 10px; font-weight: 700;
+  padding: 1px 8px; border-radius: 9px; border: 1px solid #c9b6e4; background: #fff;
+  color: #6b3fa0; cursor: pointer; font-family: inherit;
+}
+.qc-std-btn:hover:not(:disabled) { background: #f3edfb; }
+.qc-std-btn.on { background: #6b3fa0; color: #fff; }
+.qc-std-btn:disabled { opacity: 0.6; cursor: default; }
 /* 迷你九宮格：與主盤同一 color coding 的小尺寸版 */
 .qc-badges { display: flex; gap: 2px; justify-content: flex-end; align-items: center; min-height: 12px; }
 .qc-badges .mk-badge { font-size: 8px; padding: 0 3px; border-radius: 3px; max-width: 34px; }

@@ -82,6 +82,9 @@ export default function QChat() {
   // 起盤時間：預設此刻；自訂＝對方問問題的原始時辰（上一個時辰問、而家先開盤）。不存本機，屬當次操作
   const [castMode, setCastMode] = useState('now'); // now | custom
   const [castCustom, setCastCustom] = useState('');
+  // 取數起局（梅花報數）：同一時辰多人問事，以對方所報之數定局（1-9 循環）；空＝正規時盤
+  const [castNum, setCastNum] = useState('');
+  const [chartJu, setChartJu] = useState(null); // 起盤時取定的局數覆蓋（null＝正規）
   const castTime = () => {
     if (castMode === 'custom' && castCustom) {
       const d = new Date(castCustom);
@@ -89,14 +92,19 @@ export default function QChat() {
     }
     return new Date();
   };
+  const castJuNow = () => {
+    const n = parseInt(castNum, 10);
+    if (isNaN(n) || n < 1) return null;
+    return ((n - 1) % 9) + 1; // 報數 1-9 對應 1-9 局，大於 9 循環
+  };
 
-  // 由起盤時間重排盤面（paipan 對同一時間決定性一致）
+  // 由起盤時間重排盤面（paipan 對同一時間決定性一致）；chartJu 為起盤時的取數起局
   const result = useMemo(() => {
     if (!chartTime) return null;
     try {
-      return paipan(chartTime.getFullYear(), chartTime.getMonth() + 1, chartTime.getDate(), chartTime.getHours(), chartTime.getMinutes());
+      return paipan(chartTime.getFullYear(), chartTime.getMonth() + 1, chartTime.getDate(), chartTime.getHours(), chartTime.getMinutes(), chartJu ?? undefined);
     } catch { return null; }
-  }, [chartTime]);
+  }, [chartTime, chartJu]);
   const chartKey = chartTime
     ? `${chartTime.getFullYear()}-${chartTime.getMonth() + 1}-${chartTime.getDate()} ${String(chartTime.getHours()).padStart(2, '0')}:${String(chartTime.getMinutes()).padStart(2, '0')}`
     : '';
@@ -136,11 +144,12 @@ export default function QChat() {
     setInput(''); setErr(''); setBusy(true);
     let time = chartTime;
     let list = [...msgs, { role: 'user', text: question }];
-    // 第一句問題 → 起盤（預設此刻；自訂起盤時間則用對方問問題的原始時辰）
+    // 第一句問題 → 起盤（預設此刻；自訂起盤時間則用對方問問題的原始時辰；有報數則取數起局）
     if (!time) {
       time = castTime();
-      list = [...list, { role: 'chart', time: time.toISOString() }];
+      list = [...list, { role: 'chart', time: time.toISOString(), ju: castJuNow() }];
       setChartTime(time);
+      setChartJu(castJuNow());
       setConvId(`${time.getFullYear()}-${String(time.getMonth() + 1).padStart(2, '0')}-${String(time.getDate()).padStart(2, '0')} ${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`);
     }
     setMsgs(list);
@@ -173,14 +182,14 @@ export default function QChat() {
     if (inputRef.current) inputRef.current.focus();
   };
 
-  // 新盤：保留對話，下一條問題起新盤
+  // 新盤：保留對話，下一條問題起新盤（時間／取數以當時設定為準）
   const newChart = () => {
-    setChartTime(null); setQtype(''); setErr('');
+    setChartTime(null); setChartJu(null); setQtype(''); setErr('');
     setMsgs((m) => [...m, { role: 'ai', text: '好，而家幫你起個新盤。想問什麼？' }]);
   };
   // 全新對話
   const newConv = () => {
-    setMsgs([]); setChartTime(null); setQtype(''); setConvId(null); setErr('');
+    setMsgs([]); setChartTime(null); setChartJu(null); setQtype(''); setConvId(null); setErr('');
   };
   // 載入歷史對話
   const loadConv = (id) => {
@@ -189,6 +198,8 @@ export default function QChat() {
     const time = new Date(id.replace(/(\d{4})-(\d{1,2})-(\d{1,2}) (\d{2}):(\d{2})/, '$1-$2-$3T$4:$5'));
     setMsgs(e.messages); setQtype(e.qtype || ''); setConvId(id);
     setChartTime(isNaN(time) ? null : time);
+    const chartMsg = e.messages.find((m) => m.role === 'chart');
+    setChartJu(chartMsg && chartMsg.ju != null ? chartMsg.ju : null);
     setErr('');
   };
   const convList = Object.entries(chatLib)
@@ -198,6 +209,27 @@ export default function QChat() {
     .slice(0, 20);
 
   const ysPalaces = askAnalysis ? askAnalysis.rows.filter((r) => r.palace).map((r) => r.palace) : [];
+
+  // 白話 → 規範書面中文（內地可讀）：轉換結果存入訊息並隨對話存檔
+  const [translating, setTranslating] = useState(-1);
+  const translateMsg = async (i) => {
+    const m = msgs[i];
+    if (!m || m.role !== 'ai') return;
+    if (m.std) { // 已有譯文 → 切換原文／書面
+      setMsgs((list) => list.map((x, j) => (j === i ? { ...x, showStd: !x.showStd } : x)));
+      return;
+    }
+    setTranslating(i);
+    try {
+      const { text } = await aiInterpret({ task: 'toStdChinese', text: m.text });
+      setMsgs((list) => {
+        const next = list.map((x, j) => (j === i ? { ...x, std: text, showStd: true } : x));
+        saveConv(next, qtype, chartTime);
+        return next;
+      });
+    } catch (e) { setErr(String((e && e.message) || e)); }
+    setTranslating(-1);
+  };
 
   return (
     <div className="panel qc">
@@ -288,6 +320,21 @@ export default function QChat() {
           {castMode === 'custom' && (
             <span className="qc-cast-note">{chartTime ? '下一只盤生效（先「起新盤」再問）' : '第一句問題即按此時間起盤'}</span>
           )}
+          <div className="q-group">
+            <span className="q-label">取數起局</span>
+            <input
+              type="number"
+              min="1"
+              className="qc-num-input"
+              value={castNum}
+              placeholder="報數"
+              title="同一時辰多人問事：對方隨口報一個數，以數定局（1-9 循環，陰陽遁仍依節氣）；留空＝正規時盤"
+              onChange={(e) => setCastNum(e.target.value)}
+            />
+          </div>
+          {castNum && parseInt(castNum, 10) >= 1 && (
+            <span className="qc-cast-note">取數 {castNum} → {((parseInt(castNum, 10) - 1) % 9) + 1} 局{chartTime ? '（下一只盤生效）' : ''}</span>
+          )}
         </div>
         {qcSet.mode === '遠程' && (!qcSet.caster || !qcSet.querent) && (
           <div className="qc-remote-hint">遠程問事：請先設定開盤人與問事人性別，先至好以月干取事主（未設則暫以日干論）。</div>
@@ -303,12 +350,12 @@ export default function QChat() {
           {msgs.map((m, i) => {
             if (m.role === 'chart') {
               const ct = new Date(m.time);
-              const r = (() => { try { return paipan(ct.getFullYear(), ct.getMonth() + 1, ct.getDate(), ct.getHours(), ct.getMinutes()); } catch { return null; } })();
+              const r = (() => { try { return paipan(ct.getFullYear(), ct.getMonth() + 1, ct.getDate(), ct.getHours(), ct.getMinutes(), m.ju ?? undefined); } catch { return null; } })();
               return (
                 <div key={i} className="qc-chart-card">
                   <div className="qc-chart-head">
                     🀄 已起盤：{ct.getFullYear()}-{String(ct.getMonth() + 1).padStart(2, '0')}-{String(ct.getDate()).padStart(2, '0')} {String(ct.getHours()).padStart(2, '0')}:{String(ct.getMinutes()).padStart(2, '0')}
-                    {r ? `　${t(r.dun)}遁${r.ju}局` : ''}{qtype ? `　問事類別：${qtype}` : ''}
+                    {r ? `　${t(r.dun)}遁${r.ju}局` : ''}{m.ju != null ? `（取數起局）` : ''}{qtype ? `　問事類別：${qtype}` : ''}
                   </div>
                   {r && <MiniGrid result={r} ysPalaces={ysPalaces} shiZhuPalace={shiZhuPalace} shiGanPalace={shiGanPalace} />}
                   {askAnalysis && (
@@ -323,7 +370,20 @@ export default function QChat() {
             }
             return (
               <div key={i} className={`qc-msg ${m.role}`}>
-                <div className="qc-bubble">{m.role === 'ai' ? <AiText text={m.text} /> : m.text}</div>
+                <div className="qc-bubble">
+                  {m.role === 'ai' ? <AiText text={m.showStd && m.std ? m.std : m.text} /> : m.text}
+                  {m.role === 'ai' && (
+                    <button
+                      type="button"
+                      className={`qc-std-btn${m.showStd ? ' on' : ''}`}
+                      onClick={() => translateMsg(i)}
+                      disabled={translating === i}
+                      title="白話 ↔ 規範書面中文（內地可讀）"
+                    >
+                      {translating === i ? '轉換中…' : m.showStd ? '原文' : m.std ? '書面' : '譯書面'}
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}

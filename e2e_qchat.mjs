@@ -15,6 +15,7 @@ page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resourc
 
 let chatCalls = 0;
 let lastChatBody = null;
+let lastTranslateBody = null;
 await page.setRequestInterception(true);
 page.on('request', (req) => {
   if (req.url().includes('/api/interpret')) {
@@ -29,6 +30,9 @@ page.on('request', (req) => {
         status: 200, contentType: 'application/json',
         body: JSON.stringify({ json: { smalltalk, newTopic: true, qtype: smalltalk ? '' : qt, reply: smalltalk ? '你好，想問咩呀？' : '' }, model: 'deepseek-v4-flash', usage: { pt: 50, ct: 10 } }),
       });
+    } else if (body.task === 'toStdChinese') {
+      lastTranslateBody = body;
+      req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ text: '從盤上看，此事宜緩不宜急。（書面）', model: 'deepseek-v4-flash', usage: { pt: 100, ct: 50 } }) });
     } else {
       chatCalls++;
       req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ text: `【回答${chatCalls}】此事大吉，放心。`, model: 'deepseek-v4-flash', usage: { pt: 800, ct: 100 } }) });
@@ -260,6 +264,88 @@ ok('震三宮：戊擊刑干標紅', zhen && zhen.redStems.includes('戊'), zhen
 ok('震三宮：刑標記紅色', zhen && zhen.marks.some((m) => m.t === '刑' && m.cls.includes('mk-red')), zhen && zhen.marks);
 ok('震三宮：門迫標記（破）綠色', zhen && zhen.marks.some((m) => m.t === '破' && m.cls.includes('mk-green')), zhen && zhen.marks);
 ok('門迫宮門字標綠', (await cellOf('坎一')).doorGreen || zhen.doorGreen, { kan: (await cellOf('坎一')).doorGreen, zhen: zhen.doorGreen });
+
+console.log('\n[7e] 取數起局（同一時辰多人問事）');
+await page.evaluate(() => [...document.querySelectorAll('.qc-tool-btn')].find((b) => b.textContent.includes('新對話')).click());
+await sleep(200);
+// 還原此刻起盤
+await page.evaluate(() => [...document.querySelectorAll('.qc-cast-row .seg button')].find((b) => b.textContent.trim() === '此刻').click());
+await sleep(150);
+// 輸入報數 3
+await page.evaluate(() => {
+  const i = document.querySelector('.qc-num-input');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(i, '3'); i.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await sleep(150);
+let ju = await page.evaluate(() => document.querySelector('.qc-cast-note')?.textContent.trim() || null);
+ok('輸入報數即顯示對應局數（3 → 3 局）', ju && ju.includes('3 局'), ju);
+await type('我想問財運');
+await sendAndWait();
+ju = await state();
+ok('按取數起局（遁3局＋取數起局標記）', ju.chartHead && ju.chartHead.includes('遁3局') && ju.chartHead.includes('取數起局'), ju.chartHead);
+// 報數 12 → 前端取模為 3 局
+await page.evaluate(() => [...document.querySelectorAll('.qc-tool-btn')].find((b) => b.textContent.includes('起新盤')).click());
+await sleep(150);
+await page.evaluate(() => {
+  const i = document.querySelector('.qc-num-input');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(i, '12'); i.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await sleep(150);
+ju = await page.evaluate(() => document.querySelector('.qc-cast-note')?.textContent.trim() || null);
+ok('報數 12 → 循環 3 局', ju && ju.includes('3 局'), ju);
+await type('事業點睇');
+await sendAndWait();
+ju = await state();
+ok('起新盤後按新報數起局（遁3局）', ju.chartHead && ju.chartHead.includes('遁3局') && ju.chartHead.includes('取數起局'), ju.chartHead);
+// 取數屬當次操作不存本機：重整頁面後 → 正規時盤
+await page.reload({ waitUntil: 'networkidle2' });
+await page.waitForSelector('.tabs');
+await (await page.$$("xpath///button[contains(@class,'tab') and contains(text(),'AI 對話')]"))[0].click();
+await page.waitForSelector('.qc-input');
+ju = await page.evaluate(() => document.querySelector('.qc-num-input')?.value ?? 'missing');
+ok('重整後報數清空（不存本機）', ju === '', ju);
+await type('再問財運');
+await sendAndWait();
+ju = await state();
+ok('無報數 → 正規時盤（無取數標記）', ju.chartHead && !ju.chartHead.includes('取數起局'), ju.chartHead);
+
+console.log('\n[7f] 白話 → 書面轉換');
+// 重整後為空對話，先問一句取得 AI 回答
+await type('我件事成唔成？');
+await sendAndWait();
+let tr = await page.evaluate(() => {
+  const bubbles = [...document.querySelectorAll('.qc-msg.ai .qc-bubble')];
+  const last = bubbles[bubbles.length - 1];
+  const btn = last.querySelector('.qc-std-btn');
+  return { hasBtn: !!btn, label: btn?.textContent.trim(), text: last.innerText.trim() };
+});
+ok('AI 回答有「譯書面」按鈕', tr.hasBtn && tr.label === '譯書面', tr);
+await page.evaluate(() => {
+  const bubbles = [...document.querySelectorAll('.qc-msg.ai .qc-bubble')];
+  bubbles[bubbles.length - 1].querySelector('.qc-std-btn').click();
+});
+await sleep(500);
+tr = await page.evaluate(() => {
+  const bubbles = [...document.querySelectorAll('.qc-msg.ai .qc-bubble')];
+  const last = bubbles[bubbles.length - 1];
+  return { text: last.innerText.trim(), label: last.querySelector('.qc-std-btn')?.textContent.trim() };
+});
+ok('轉換請求帶原文', lastTranslateBody && lastTranslateBody.task === 'toStdChinese' && lastTranslateBody.text.includes('此事大吉'), lastTranslateBody && lastTranslateBody.text);
+ok('顯示書面譯文＋按鈕變「原文」', tr.text.includes('（書面）') && tr.label === '原文', tr);
+// 切回原文
+await page.evaluate(() => {
+  const bubbles = [...document.querySelectorAll('.qc-msg.ai .qc-bubble')];
+  bubbles[bubbles.length - 1].querySelector('.qc-std-btn').click();
+});
+await sleep(200);
+tr = await page.evaluate(() => {
+  const bubbles = [...document.querySelectorAll('.qc-msg.ai .qc-bubble')];
+  const last = bubbles[bubbles.length - 1];
+  return { text: last.innerText.trim(), label: last.querySelector('.qc-std-btn')?.textContent.trim() };
+});
+ok('切回原文（不再呼叫）', !tr.text.includes('（書面）') && tr.label === '書面', tr);
 
 console.log('\n[8] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);

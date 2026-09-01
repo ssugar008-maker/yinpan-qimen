@@ -66,7 +66,8 @@ function xunOf(ganZhi) {
   return { xunShou, kong };
 }
 
-export function paipan(year, month, day, hour, minute) {
+// juOverride：取數起局（梅花報數）——同一時辰多人問事時，以對方所報之數定局（1-9，陰陽遁仍依節氣）
+export function paipan(year, month, day, hour, minute, juOverride) {
   const inputSolar = Solar.fromYmdHms(year, month, day, hour, minute, 0);
   // 晚子时（23:00–23:59）按次日排盘（日柱、时柱、农历日均取次日）
   const solar = hour >= 23 ? Solar.fromYmdHms(year, month, day, 0, minute, 0).next(1) : inputSolar;
@@ -96,6 +97,8 @@ export function paipan(year, month, day, hour, minute) {
   const hourZhiNum = ZHI.indexOf(timeGZ[1]) + 1;
   let ju = (yearZhiNum + lunarMonth + lunarDay + hourZhiNum) % 9;
   if (ju === 0) ju = 9;
+  const juByNumber = Number.isInteger(juOverride) && juOverride >= 1 && juOverride <= 9; // 取數起局：報數 1-9 直接定局
+  if (juByNumber) ju = juOverride;
 
   // 地盘：戊从局数宫起飞，阳顺（宫数递增）阴逆（宫数递减）
   const dipan = {}; // palace -> stem
@@ -273,7 +276,7 @@ export function paipan(year, month, day, hour, minute) {
     solarText: inputSolar.toYmdHms(),
     pillars, xunKong,
     xunShou: hourXun.xunShou + xunShouYi,
-    dun, ju, prevJieQi,
+    dun, ju, prevJieQi, juByNumber,
     zhiFu: { star: zhiFuStar, palace: hourGanPalace },
     zhiShi: { door: zhiShiDoor, palace: zhiShiPalace },
     dipan, palaces, waigan, waiganJiGong, waiganCenter,

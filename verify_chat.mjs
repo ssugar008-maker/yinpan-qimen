@@ -96,5 +96,30 @@ ok('用神帶符號與狀態', ask.yongshen[0].symbols.length > 0 && Array.isArr
 ok('chart 帶四柱遁局值符值使馬星', ask.chart.pillars.length === 4 && ask.chart.zhiFu.includes('落') && !!ask.chart.horse);
 ok('空亡轉宮為陣列', Array.isArray(ask.kong));
 
+console.log('\n[5] 取數起局（梅花報數）');
+const baseChart = paipan(2026, 5, 16, 11, 38);
+const n3 = paipan(2026, 5, 16, 11, 38, 3);
+ok('取數 3 → 3 局', n3.ju === 3 && n3.juByNumber === true, { ju: n3.ju });
+ok('取數起局地盤與正規不同', JSON.stringify(n3.dipan) !== JSON.stringify(baseChart.dipan));
+ok('陰陽遁仍依節氣（同遁）', n3.dun === baseChart.dun, { a: n3.dun, b: baseChart.dun });
+ok('正規盤 juByNumber 不為真', !baseChart.juByNumber);
+const n12 = paipan(2026, 5, 16, 11, 38, 12);
+ok('引擎只收 1-9；12 超出範圍 → 忽略（正規局）（大於 9 的循環由前端 castJuNow 先取模）', n12.ju === baseChart.ju, n12.ju);
+const n9 = paipan(2026, 5, 16, 11, 38, 9);
+ok('取數 9 → 9 局', n9.ju === 9, n9.ju);
+ok('取數 0／非整數 → 忽略（正規局）', paipan(2026, 5, 16, 11, 38, 0).ju === baseChart.ju && paipan(2026, 5, 16, 11, 38, 2.5).ju === baseChart.ju);
+ok('不帶第 6 參數 → 正規局（向後相容）', paipan(2026, 5, 16, 11, 38).ju === baseChart.ju);
+
+console.log('\n[6] 白話→書面轉換（toStdChinese）');
+mockReply = '從盤上看，此事宜緩不宜急。';
+r = await call({ task: 'toStdChinese', text: '呢件事唔急得住。' });
+ok('status 200', r.status === 200, r.status);
+ok('prompt 要求保留術語', r.msgs[1].content.includes('專有名詞') && r.msgs[1].content.includes('唔'));
+ok('prompt 含原文', r.msgs[1].content.includes('呢件事唔急得住。'));
+ok('低溫 0.3', r.body.temperature === 0.3, r.body.temperature);
+ok('回應為轉換文字', r.json.text === '從盤上看，此事宜緩不宜急。', r.json);
+r = await call({ task: 'toStdChinese', text: '' });
+ok('缺文字 → 400', r.status === 400, r.json);
+
 console.log(`\n${pass} 通過，${fail} 失敗`);
 process.exit(fail ? 1 : 0);
