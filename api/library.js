@@ -1,7 +1,7 @@
 // Vercel Serverless Function：AI 分析結果雲端儲存（跨裝置）
 // 後端二擇一（自動偵測環境變數）：
 //   1. Vercel KV（Upstash Redis）：KV_REST_API_URL / KV_REST_API_TOKEN（或 UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN）
-//   2. Vercel Blob：BLOB_READ_WRITE_TOKEN（連接 Blob store 後自動注入；每個 namespace 存為一個 JSON blob）
+//   2. Vercel Blob：BLOB_READ_WRITE_TOKEN 或 VERCEL_OIDC_TOKEN（連接 Blob store 後 Vercel 自動注入；每個 namespace 存為一個 JSON blob）
 // 兩者都未設定則回 503，前端自動回退 localStorage（本機仍可用）。
 //
 //   GET  /api/library?ns=<namespace>        → { updatedAt, data }
@@ -26,14 +26,16 @@ async function kvCmd(cfg, args) {
 const kvKeyFor = (ns) => `mo-yixue:lib:${ns}`;
 
 // ── Vercel Blob（REST，無 SDK）──
+// Token：BLOB_READ_WRITE_TOKEN（靜態長期）或 VERCEL_OIDC_TOKEN（連接 store 後 Vercel 自動喺 runtime 注入，短期輪轉）。
+// 注意：連接 store 時自訂 prefix（如 yinpan_AI_STORE_ID）只係識別用，授權靠上述 token，無需讀 prefix 變數。
 function blobConfig() {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN;
   return token ? { type: 'blob', token: String(token).trim() } : null;
 }
-const BLOB_API = 'https://blob.vercel-storage.com';
+const BLOB_API = 'https://vercel.com/api/blob';
 const blobPathFor = (ns) => `mo-yixue/lib/${ns}.json`;
 async function blobGet(cfg, ns) {
-  // 先以 list 按 pathname 搵 URL，再讀內容（public blob 可直接 GET）
+  // 先以 list 按 pathname 搵 URL，再讀內容（public blob 可直接 GET；private 加 Authorization）
   const lr = await fetch(`${BLOB_API}/?prefix=${encodeURIComponent(blobPathFor(ns))}&limit=5`, {
     headers: { Authorization: `Bearer ${cfg.token}`, 'x-api-version': '12' },
   });
@@ -41,23 +43,26 @@ async function blobGet(cfg, ns) {
   const ld = await lr.json().catch(() => null);
   const blob = ld && Array.isArray(ld.blobs) ? (ld.blobs.find((b) => b.pathname === blobPathFor(ns)) || ld.blobs[0]) : null;
   if (!blob || !blob.url) return null;
-  const r = await fetch(blob.url, { cache: 'no-store' });
+  let r = await fetch(blob.url, { cache: 'no-store' });
+  if (!r.ok) r = await fetch(blob.url, { cache: 'no-store', headers: { Authorization: `Bearer ${cfg.token}` } });
   if (!r.ok) return null;
   const txt = await r.text();
   try { return JSON.parse(txt); } catch { return null; }
 }
 async function blobSet(cfg, ns, payload) {
-  await fetch(`${BLOB_API}/?pathname=${encodeURIComponent(blobPathFor(ns))}`, {
+  const put = (access) => fetch(`${BLOB_API}/?pathname=${encodeURIComponent(blobPathFor(ns))}`, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${cfg.token}`,
       'x-api-version': '12',
-      'x-vercel-blob-access': 'public',
+      'x-vercel-blob-access': access,
       'x-allow-overwrite': '1',
       'x-content-type': 'application/json',
     },
     body: payload,
   });
+  let r = await put('public');
+  if (!r.ok) r = await put('private'); // store 設為 private 時改用 private 寫入
 }
 
 export default async function handler(req, res) {
