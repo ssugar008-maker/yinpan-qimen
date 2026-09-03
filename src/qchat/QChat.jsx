@@ -2,7 +2,6 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { paipan } from '../qimen/engine.js';
 import { t, PALACE_NAME, PALACE_SHORT, buildAskPayload, resolveAsk, stemMarkClass, palaceMarkClass } from '../qimen/analysis.js';
 import { shiZhuStem } from '../qimen/ask.js';
-import { useCloudStore } from '../cloud.js';
 import { aiInterpret } from '../ai.js';
 import AiText from '../AiText.jsx';
 
@@ -10,6 +9,7 @@ import AiText from '../AiText.jsx';
 // 分析口徑與「AI 問事解讀」完全一致（共用 qimen/analysis.js 全鏈：用神／四害／空亡轉宮／應期）。
 const GRID5 = [4, 9, 2, 3, 5, 7, 8, 1, 6];
 const CHAT_KEY = 'qimen_chat_v1';
+const OWNER_STORE = 'mo_qchat_owner'; // 擁有者密碼（本機保存）
 const entry = (v) => (typeof v === 'string' ? { messages: [] } : (v || null));
 
 // 迷你九宮格（對話內盤面卡片用）：與主盤同一 color coding ——
@@ -65,7 +65,13 @@ export default function QChat() {
   const [err, setErr] = useState('');
   const [chartTime, setChartTime] = useState(null); // Date of current chart
   const [qtype, setQtype] = useState('');
-  const [chatLib, setChatLib, chatCloudOn] = useCloudStore('qimen_chat', CHAT_KEY, {});
+  // 對話存檔：本機（呢部設備）＋雲端 upsert（開放寫入：其他人問嘅都同步上云）；
+  // 雲端讀取（睇全部人嘅記錄）需要擁有者密碼（Vercel 環境變數 OWNER_KEY）。
+  const [localConvs, setLocalConvs] = useState(() => { try { return JSON.parse(localStorage.getItem(CHAT_KEY) || '{}'); } catch { return {}; } });
+  const [cloudConvs, setCloudConvs] = useState([]); // 擁有者解鎖後先拉到（全部設備＋訪客）
+  const [chatCloudOn, setChatCloudOn] = useState(false);
+  const [ownerKey, setOwnerKeyState] = useState(() => { try { return localStorage.getItem(OWNER_STORE) || ''; } catch { return ''; } });
+  const [ownerErr, setOwnerErr] = useState('');
   const [convId, setConvId] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -123,11 +129,62 @@ export default function QChat() {
 
   useEffect(() => { if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' }); }, [msgs, busy]);
 
-  // 存檔（按起盤時間）
+  // 雲端是否接通（用未受保護嘅 ns 探測；qimen_chat 讀取受密碼保護，唔可以用嚟探測）
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch('/api/library?ns=qimen_ask');
+        if (alive) setChatCloudOn(r.ok);
+      } catch { if (alive) setChatCloudOn(false); }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // 擁有者解鎖後：拉雲端全部對話（全部設備＋訪客）
+  useEffect(() => {
+    if (!ownerKey) { setCloudConvs([]); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`/api/library?ns=qimen_chat&key=${encodeURIComponent(ownerKey)}`);
+        const d = await r.json().catch(() => null);
+        if (!alive) return;
+        if (r.ok) { setCloudConvs(Array.isArray(d && d.entries) ? d.entries : []); setOwnerErr(''); }
+        else if (r.status === 403) { setCloudConvs([]); setOwnerErr('密碼唔啱'); }
+      } catch { }
+    })();
+    return () => { alive = false; };
+  }, [ownerKey]);
+
+  const setOwnerKey = (k) => {
+    const v = (k || '').trim();
+    try { v ? localStorage.setItem(OWNER_STORE, v) : localStorage.removeItem(OWNER_STORE); } catch { }
+    setOwnerKeyState(v);
+  };
+  const toggleOwner = () => {
+    if (ownerKey) { setOwnerKey(''); setOwnerErr(''); return; }
+    const v = window.prompt('輸入擁有者密碼（睇全部人嘅問事記錄）：');
+    if (v != null) setOwnerKey(v);
+  };
+
+  // 存檔（按起盤時間）：本機＋雲端 upsert
   const saveConv = (list, qt, time) => {
     if (!time) return;
     const id = `${time.getFullYear()}-${String(time.getMonth() + 1).padStart(2, '0')}-${String(time.getDate()).padStart(2, '0')} ${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
-    setChatLib((lib) => ({ ...lib, [id]: { messages: list, qtype: qt, ts: Date.now() } }));
+    setLocalConvs((lib) => {
+      const next = { ...lib, [id]: { messages: list, qtype: qt, ts: Date.now() } };
+      try { localStorage.setItem(CHAT_KEY, JSON.stringify(next)); } catch { }
+      return next;
+    });
+    // 雲端 upsert（按對話 id 更新或加入；盤卡唔上存，由時間重排）
+    const chartMsg = list.find((m) => m.role === 'chart');
+    const messages = list.filter((m) => m.role !== 'chart').slice(-40).map((m) => ({ role: m.role, text: String(m.text || '').slice(0, 800), std: m.std, showStd: m.showStd }));
+    const firstQ = (list.find((m) => m.role === 'user') || {}).text || '';
+    fetch('/api/library', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ns: 'qimen_chat', upsert: { id, ts: Date.now(), firstQ: String(firstQ).slice(0, 120), qtype: qt, ju: chartMsg && chartMsg.ju != null ? chartMsg.ju : null, messages } }),
+    }).catch(() => { });
   };
 
   // 對話歷史 → followups 格式（圖表卡片除外）
@@ -195,22 +252,30 @@ export default function QChat() {
   const newConv = () => {
     setMsgs([]); setChartTime(null); setChartJu(null); setQtype(''); setConvId(null); setErr('');
   };
-  // 載入歷史對話
-  const loadConv = (id) => {
-    const e = entry(chatLib[id]);
-    if (!e || !e.messages) return;
-    const time = new Date(id.replace(/(\d{4})-(\d{1,2})-(\d{1,2}) (\d{2}):(\d{2})/, '$1-$2-$3T$4:$5'));
-    setMsgs(e.messages); setQtype(e.qtype || ''); setConvId(id);
-    setChartTime(isNaN(time) ? null : time);
-    const chartMsg = e.messages.find((m) => m.role === 'chart');
-    setChartJu(chartMsg && chartMsg.ju != null ? chartMsg.ju : null);
-    setErr('');
-  };
-  const convList = Object.entries(chatLib)
-    .map(([id, v]) => ({ id, ...(entry(v) || {}) }))
+  // 歷史列表：未解鎖＝呢部設備嘅本機記錄；擁有者解鎖後＝雲端全部（所有設備＋訪客）
+  const convList = (ownerKey
+    ? cloudConvs.map((e) => ({ ...e }))
+    : Object.entries(localConvs).map(([id, v]) => ({ id, ...(entry(v) || {}) })))
     .filter((x) => x.messages && x.messages.length)
     .sort((a, b) => (b.ts || 0) - (a.ts || 0))
     .slice(0, 20);
+
+  // 載入歷史對話（本機或雲端記錄；雲端唔存盤卡，按起盤時間重插）
+  const loadConv = (id) => {
+    const src = ownerKey ? cloudConvs.find((x) => x.id === id) : entry(localConvs[id]);
+    if (!src || !src.messages) return;
+    const time = new Date(id.replace(/(\d{4})-(\d{1,2})-(\d{1,2}) (\d{2}):(\d{2})/, '$1-$2-$3T$4:$5'));
+    let messages = src.messages;
+    if (!messages.some((m) => m.role === 'chart') && !isNaN(time)) {
+      const ci = messages.findIndex((m) => m.role === 'user');
+      const card = { role: 'chart', time: time.toISOString(), ju: src.ju != null ? src.ju : null };
+      messages = ci >= 0 ? [...messages.slice(0, ci + 1), card, ...messages.slice(ci + 1)] : [card, ...messages];
+    }
+    setMsgs(messages); setQtype(src.qtype || ''); setConvId(id);
+    setChartTime(isNaN(time) ? null : time);
+    setChartJu(src.ju != null ? src.ju : null);
+    setErr('');
+  };
 
   const ysPalaces = askAnalysis ? askAnalysis.rows.filter((r) => r.palace).map((r) => r.palace) : [];
 
@@ -265,17 +330,24 @@ export default function QChat() {
         <div className="qc-toolbar">
           <button type="button" className="qc-tool-btn" onClick={newChart} disabled={!chartTime}>🔄 起新盤</button>
           <button type="button" className="qc-tool-btn" onClick={newConv} disabled={!msgs.length}>✨ 新對話</button>
+          <button
+            type="button"
+            className={`qc-tool-btn qc-owner${ownerKey ? ' on' : ''}`}
+            onClick={toggleOwner}
+            title={ownerKey ? '擁有者模式：睇到全部人嘅問事記錄（撳一下鎖返）' : '擁有者解鎖：輸入密碼睇全部人嘅問事記錄'}
+          >{ownerKey ? '🔓 擁有者' : '🔒'}</button>
           {convList.length > 0 && (
             <select className="qc-hist" value="" onChange={(e) => { if (e.target.value) loadConv(e.target.value); }}>
-              <option value="">歷史對話…</option>
+              <option value="">{ownerKey ? '全部問事記錄…' : '本機記錄…'}</option>
               {convList.map((c) => {
-                const firstQ = (c.messages.find((m) => m.role === 'user') || {}).text || '';
-                return <option key={c.id} value={c.id}>{c.id}｜{firstQ.slice(0, 12)}</option>;
+                const firstQ = c.firstQ || (c.messages.find((m) => m.role === 'user') || {}).text || '';
+                return <option key={c.id} value={c.id}>{c.id}｜{String(firstQ).slice(0, 12)}</option>;
               })}
             </select>
           )}
-          <span className={`cloud-dot ${chatCloudOn ? 'on' : 'off'}`} title={chatCloudOn ? '雲端同步中：其他設備都睇到' : '只存本機：其他設備睇唔到（請喺 Vercel 連接 KV 資料庫）'}>{chatCloudOn ? '雲端同步' : '本機'}</span>
+          <span className={`cloud-dot ${chatCloudOn ? 'on' : 'off'}`} title={chatCloudOn ? '雲端同步中：問事記錄會上存雲端' : '只存本機：雲端未連接'}>{chatCloudOn ? '雲端同步' : '本機'}</span>
         </div>
+        {ownerErr && <div className="ai-error">{ownerErr}（唔啱就唔會顯示全部記錄）</div>}
 
         {/* 對話設定：界面（簡易／專業）＋語氣／詳略；遠程取用神等進階選項只喺專業界面顯示 */}
         <div className="qc-settings">

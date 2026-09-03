@@ -70,6 +70,26 @@ async function blobSet(cfg, ns, payload) {
   if (!r.ok) r = await put('private'); // store 設為 private 時改用 private 寫入
 }
 
+// 統一讀寫（KV 或 Blob）
+async function storeRead(cfg, ns) {
+  if (cfg.type === 'kv') {
+    const d = await kvCmd(cfg, ['GET', kvKeyFor(ns)]);
+    let val = null;
+    try { val = d && d.result ? JSON.parse(d.result) : null; } catch { val = null; }
+    return val && typeof val === 'object' ? val : null;
+  }
+  return blobGet(cfg, ns);
+}
+async function storeWrite(cfg, ns, payload) {
+  if (cfg.type === 'kv') await kvCmd(cfg, ['SET', kvKeyFor(ns), payload]);
+  else await blobSet(cfg, ns, payload);
+}
+
+// 需要擁有者密碼先可以讀嘅 namespace（其他人嘅問事記錄）；OWNER_KEY 未設定則唔鎖（向後相容）
+const PROTECTED_READ_NS = new Set(['qimen_chat']);
+const OWNER_KEY = process.env.OWNER_KEY ? String(process.env.OWNER_KEY).trim() : '';
+const MAX_ENTRIES = 300; // upsert 列表上限
+
 export default async function handler(req, res) {
   // 診斷（只回變數名是否存在，永不回值）：/api/library?debug=1
   if (req.method === 'GET' && req.query && req.query.debug === '1') {
@@ -78,6 +98,7 @@ export default async function handler(req, res) {
       kv: !!(process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL),
       blobRW: !!process.env.BLOB_READ_WRITE_TOKEN || names.some((k) => /_READ_WRITE_TOKEN$/i.test(k)),
       oidc: !!process.env.VERCEL_OIDC_TOKEN,
+      ownerSet: !!OWNER_KEY,
       storeLike: names.filter((k) => /STORE|BLOB|KV_|REDIS|UPSTASH|OIDC|READ_WRITE/i.test(k)),
     });
     return;
@@ -88,16 +109,14 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const ns = req.query && req.query.ns;
     if (!ALLOWED_NS.has(ns)) { res.status(400).json({ error: 'namespace 不正確' }); return; }
+    // 受保護 namespace：需要擁有者密碼（?key= 或 x-owner-key header）
+    if (PROTECTED_READ_NS.has(ns) && OWNER_KEY) {
+      const key = String((req.query && req.query.key) || req.headers['x-owner-key'] || '').trim();
+      if (key !== OWNER_KEY) { res.status(403).json({ error: '需要擁有者密碼' }); return; }
+    }
     try {
-      if (cfg.type === 'kv') {
-        const d = await kvCmd(cfg, ['GET', kvKeyFor(ns)]);
-        let val = null;
-        try { val = d && d.result ? JSON.parse(d.result) : null; } catch { val = null; }
-        res.status(200).json(val && typeof val === 'object' ? val : { updatedAt: 0, data: null });
-      } else {
-        const val = await blobGet(cfg, ns);
-        res.status(200).json(val && typeof val === 'object' ? val : { updatedAt: 0, data: null });
-      }
+      const val = await storeRead(cfg, ns);
+      res.status(200).json(val && typeof val === 'object' ? val : { updatedAt: 0, data: null });
     } catch (e) { res.status(500).json({ error: '讀取失敗', detail: String(e && e.message || e) }); }
     return;
   }
@@ -105,12 +124,22 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = null; } }
-    const { ns, updatedAt, data } = body || {};
+    const { ns, updatedAt, data, upsert } = body || {};
     if (!ALLOWED_NS.has(ns)) { res.status(400).json({ error: 'namespace 不正確' }); return; }
     try {
+      // upsert：按 id 更新或加入（多人問事唔會互相覆蓋）；開放寫入（訪客問事都同步上云）
+      if (upsert && typeof upsert === 'object' && upsert.id) {
+        const cur = await storeRead(cfg, ns);
+        const entries = Array.isArray(cur && cur.entries) ? cur.entries : [];
+        const i = entries.findIndex((e) => e && e.id === upsert.id);
+        if (i >= 0) entries[i] = { ...entries[i], ...upsert };
+        else entries.push(upsert);
+        await storeWrite(cfg, ns, JSON.stringify({ updatedAt: Date.now(), entries: entries.slice(-MAX_ENTRIES) }));
+        res.status(200).json({ ok: true });
+        return;
+      }
       const payload = JSON.stringify({ updatedAt: updatedAt || Date.now(), data: data == null ? null : data });
-      if (cfg.type === 'kv') await kvCmd(cfg, ['SET', kvKeyFor(ns), payload]);
-      else await blobSet(cfg, ns, payload);
+      await storeWrite(cfg, ns, payload);
       res.status(200).json({ ok: true });
     } catch (e) { res.status(500).json({ error: '寫入失敗', detail: String(e && e.message || e) }); }
     return;
