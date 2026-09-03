@@ -66,6 +66,17 @@ async function blobSet(cfg, ns, payload) {
 }
 
 export default async function handler(req, res) {
+  // 診斷（只回變數名是否存在，永不回值）：/api/library?debug=1
+  if (req.method === 'GET' && req.query && req.query.debug === '1') {
+    const names = Object.keys(process.env);
+    res.status(200).json({
+      kv: !!(process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL),
+      blobRW: !!process.env.BLOB_READ_WRITE_TOKEN,
+      oidc: !!process.env.VERCEL_OIDC_TOKEN,
+      storeLike: names.filter((k) => /STORE|BLOB|KV_|REDIS|UPSTASH|OIDC/i.test(k)),
+    });
+    return;
+  }
   const cfg = kvConfig() || blobConfig();
   if (!cfg) { res.status(503).json({ error: '雲端未設定（請於 Vercel 連接 KV 資料庫或 Blob store）' }); return; }
 
