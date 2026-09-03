@@ -719,6 +719,29 @@ function ModelToggle() {
 
 // AI 用量徽章：本月呼叫次數與 token 數（本機累計）＋ API 帳戶餘額進度條（/api/usage 查 DeepSeek 餘額）
 const BAL_REF_KEY = 'mo_ai_balance_ref'; // 充值總額參考（用於進度條比例；首次快照自動設定，可點按修改）
+// 雲端儲存狀態燈：ping /api/library，雲端（綠）＝跨設備同步中／本機（灰）＝只存呢部機
+function CloudStatusDot() {
+  const [on, setOn] = useState(null); // null=檢查中
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch('/api/library?ns=qimen_chat');
+        if (alive) setOn(r.ok);
+      } catch { if (alive) setOn(false); }
+    })();
+    return () => { alive = false; };
+  }, []);
+  if (on === null) return null;
+  return (
+    <div
+      className={`cloud-status ${on ? 'on' : 'off'}`}
+      role="status"
+      title={on ? '雲端儲存已連接：問答同解讀記錄跨設備同步' : '雲端儲存未連接：只存本機（請喺 Vercel 連接儲存並加 BLOB_READ_WRITE_TOKEN）'}
+    >{on ? '☁ 雲端同步' : '☁ 本機'}</div>
+  );
+}
+
 function UsageBadge() {
   const [, force] = useState(0);
   const [bal, setBal] = useState(null); // null=載入中；{supported:false}=服務商不支援；{supported:true,currency,total,...}
@@ -1098,6 +1121,7 @@ export default function App() {
       <div className="subtitle">陰盤奇門 · 九宮飛星 · 玄空飛星 · 二十四天星</div>
       <ModelToggle />
       <UsageBadge />
+      <CloudStatusDot />
       <button type="button" className="lib-open-btn" onClick={() => setLibOpen(true)}>📁 命盤庫{chartLib.charts.length ? `（${chartLib.charts.length}）` : ''}</button>
       {libOpen && <ChartLibrary charts={chartLib.charts} onRemove={chartLib.remove} onClose={() => setLibOpen(false)} cloudOn={chartLib.cloudOn} />}
 
