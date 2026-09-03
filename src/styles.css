@@ -1288,6 +1288,15 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
   flex: 1; padding: 10px 12px; font-size: 14px; border: 1px solid var(--line);
   border-radius: 10px; font-family: inherit; box-sizing: border-box;
 }
+.qc-textarea {
+  resize: none; line-height: 1.5; min-height: 42px; max-height: 140px; overflow-y: auto;
+}
+.qc-mic {
+  flex: none; width: 40px; border-radius: 10px; border: 1px solid var(--line); background: #fff;
+  font-size: 16px; cursor: pointer; font-family: inherit;
+}
+.qc-mic.on { background: #dc2626; border-color: #dc2626; animation: qc-mic-pulse 1.2s infinite; }
+@keyframes qc-mic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
 /* 玄空：八宅命卦九宮格 */
 .bazhai-grid .xk-cell { min-height: 74px; display: flex; flex-direction: column; justify-content: center; gap: 2px; }

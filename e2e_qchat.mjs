@@ -121,7 +121,81 @@ await sleep(400);
 s = await state();
 ok('載入歷史對話（訊息與盤面還原）', s.charts >= 1 && s.msgs.some((m) => m.user && m.text.includes('簽約')), { charts: s.charts, msgs: s.msgs.length });
 
+console.log('\n[7a] 簡易／專業界面');
+let ui = await page.evaluate(() => {
+  const bar = document.querySelector('.qc-settings');
+  return {
+    groups: [...bar.querySelectorAll('.q-group')].map((g) => g.querySelector('.q-label')?.textContent.trim()),
+    castRow: !!document.querySelector('.qc-cast-row'),
+  };
+});
+ok('預設簡易界面：只有 界面/語氣/詳略', ui.groups.length === 3 && ui.groups[0] === '界面' && ui.groups[1] === '語氣' && ui.groups[2] === '詳略', ui.groups);
+ok('簡易界面無起盤時間/取數列', !ui.castRow);
+// 簡易界面問事 → 近程（日干為事主）
+await type('我件事成唔成？');
+await sendAndWait();
+ok('簡易界面 payload 為近程日干事主', lastChatBody && lastChatBody.ask.chart.shiZhuLabel === '事主（日干）', lastChatBody && lastChatBody.ask.chart.shiZhuLabel);
+// 切專業
+await page.evaluate(() => {
+  const g = [...document.querySelectorAll('.qc-settings .q-group')].find((x) => x.querySelector('.q-label')?.textContent.trim() === '界面');
+  [...g.querySelectorAll('.seg button')].find((b) => b.textContent.trim() === '專業').click();
+});
+await sleep(200);
+ui = await page.evaluate(() => ({
+  groups: [...document.querySelectorAll('.qc-settings .q-group')].map((g) => g.querySelector('.q-label')?.textContent.trim()),
+  castRow: !!document.querySelector('.qc-cast-row'),
+}));
+ok('專業界面顯示 問事/開盤人/問事人＋起盤時間列', ui.groups.includes('問事') && ui.groups.includes('開盤人') && ui.groups.includes('問事人') && ui.castRow, ui);
+
+console.log('\n[7a2] 輸入框改 textarea（長文自動長高）');
+const ta = await page.evaluate(() => {
+  const el = document.querySelector('.qc-input');
+  return { tag: el.tagName, h1: el.style.height || el.offsetHeight };
+});
+ok('輸入框為 textarea', ta.tag === 'TEXTAREA', ta.tag);
+await page.type('.qc-input', '呢個係一段好長好長好長好長好長好長好長好長好長好長好長好長好長好長好長好長好長好長好長好長嘅問題，要試下會唔會仲伸出右邊去睇唔到。');
+await sleep(300);
+const ta2 = await page.evaluate(() => {
+  const el = document.querySelector('.qc-input');
+  return { h: el.offsetHeight, sh: el.scrollHeight, sw: el.scrollWidth, cw: el.clientWidth };
+});
+ok('長文自動長高（高度增加）', ta2.h > 42, ta2);
+ok('長文唔再伸出右邊（無橫向溢出）', ta2.sw <= ta2.cw + 2, ta2);
+// Enter 送出（Shift+Enter 換行）
+await page.evaluate(() => { const el = document.querySelector('.qc-input'); el.focus(); });
+await page.keyboard.press('Enter');
+await sleep(600);
+ok('Enter 直接送出', await page.evaluate(() => [...document.querySelectorAll('.qc-msg.user')].some((m) => m.innerText.includes('好長'))));
+
+console.log('\n[7a3] 語音輸入按鈕');
+// headless Chrome 自帶 webkitSpeechRecognition；注入 mock（evaluateOnNewDocument 先於頁面腳本，重整後仍生效）
+await page.evaluateOnNewDocument(() => {
+  window.SpeechRecognition = class {
+    start() { if (this.onresult) this.onresult({ results: [[{ transcript: '語音測試問題' }]] }); if (this.onend) this.onend(); }
+    stop() { }
+  };
+});
+await page.reload({ waitUntil: 'networkidle2' });
+await page.waitForSelector('.tabs');
+await (await page.$$("xpath///button[contains(@class,'tab') and contains(text(),'AI 對話')]"))[0].click();
+await page.waitForSelector('.qc-input');
+let mic = await page.evaluate(() => !!document.querySelector('.qc-mic'));
+ok('支援語音時咪高峰出現', mic);
+await page.evaluate(() => document.querySelector('.qc-mic').click());
+await sleep(300);
+mic = await page.evaluate(() => document.querySelector('.qc-input').value);
+ok('語音辨識結果入到輸入框', mic.includes('語音測試問題'), mic);
+// 清走輸入框，避免影響之後測試
+await page.evaluate(() => { document.querySelector('.qc-input').value = ''; document.querySelector('.qc-input').dispatchEvent(new Event('input', { bubbles: true })); });
+
 console.log('\n[7b] 對話設定：語氣／詳略／遠程取用神');
+// 上一節重整後回到簡易界面？——qcSet 存本機，界面保留專業；若唔係則切過去
+await page.evaluate(() => {
+  const g = [...document.querySelectorAll('.qc-settings .q-group')].find((x) => x.querySelector('.q-label')?.textContent.trim() === '界面');
+  const proBtn = [...g.querySelectorAll('.seg button')].find((b) => b.textContent.trim() === '專業');
+  if (!proBtn.classList.contains('on')) proBtn.click();
+});
+await sleep(200);
 // 預設值（遠程＋開盤人男：用家本人為男性開盤者，別人多數遠程問事）
 let set = await page.evaluate(() => {
   const bar = document.querySelector('.qc-settings');
@@ -134,9 +208,10 @@ let set = await page.evaluate(() => {
   return { groups, hint: !!document.querySelector('.qc-remote-hint') };
 });
 ok('設定列存在（語氣/詳略/問事）', set && set.groups.length >= 3, set);
-ok('預設 白話／適中／遠程', set && set.groups[0].on === '白話' && set.groups[1].on === '適中' && set.groups[2].on === '遠程', set.groups);
+const onOf = (label) => set.groups.find((g) => g.label === label)?.on;
+ok('預設 白話／適中／遠程', onOf('語氣') === '白話' && onOf('詳略') === '適中' && onOf('問事') === '遠程', set.groups);
 ok('遠程預設 → 性別選擇預設顯示', set && set.groups.some((g) => g.label === '開盤人') && set.groups.some((g) => g.label === '問事人'), set.groups.map((g) => g.label));
-ok('開盤人預設男、問事人未設', set && set.groups.find((g) => g.label === '開盤人').on === '男' && !set.groups.find((g) => g.label === '問事人').on, set.groups);
+ok('開盤人預設男、問事人未設', onOf('開盤人') === '男' && !onOf('問事人'), set.groups);
 ok('問事人未設 → 提示顯示', set.hint);
 // 切 書面＋簡潔 → 下一個回答的請求帶 chatStyle/chatDetail
 await page.evaluate(() => {
