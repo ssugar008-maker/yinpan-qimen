@@ -1249,6 +1249,7 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
   font-size: 12px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px;
   font-family: inherit; background: #fff; color: #6a5f4f; max-width: 180px;
 }
+.qc-owner.on { background: #2e7d32; border-color: #2e7d32; color: #fff; }
 .qc-msgs {
   display: flex; flex-direction: column; gap: 8px; max-height: 56vh; overflow-y: auto;
   padding: 4px 2px; margin-bottom: 8px;

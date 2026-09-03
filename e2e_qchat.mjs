@@ -16,8 +16,31 @@ page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resourc
 let chatCalls = 0;
 let lastChatBody = null;
 let lastTranslateBody = null;
+const libEntries = []; // 模擬雲端對話記錄（upsert）
+const OWNER_KEY_TEST = 'test123';
 await page.setRequestInterception(true);
 page.on('request', (req) => {
+  if (req.url().includes('/api/library')) {
+    const u = new globalThis.URL(req.url());
+    if (req.method() === 'POST') {
+      let b = {}; try { b = JSON.parse(req.postData() || '{}'); } catch { }
+      if (b.upsert && b.upsert.id) {
+        const i = libEntries.findIndex((e) => e.id === b.upsert.id);
+        if (i >= 0) libEntries[i] = { ...libEntries[i], ...b.upsert }; else libEntries.push(b.upsert);
+      }
+      req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    } else {
+      const ns = u.searchParams.get('ns');
+      if (ns === 'qimen_chat') {
+        const key = u.searchParams.get('key') || '';
+        if (key !== OWNER_KEY_TEST) { req.respond({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: '需要擁有者密碼' }) }); return; }
+        req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ updatedAt: Date.now(), entries: libEntries }) });
+        return;
+      }
+      req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ updatedAt: 0, data: null }) });
+    }
+    return;
+  }
   if (req.url().includes('/api/interpret')) {
     let body = {};
     try { body = JSON.parse(req.postData() || '{}'); } catch { }
@@ -421,6 +444,48 @@ tr = await page.evaluate(() => {
   return { text: last.innerText.trim(), label: last.querySelector('.qc-std-btn')?.textContent.trim() };
 });
 ok('切回原文（不再呼叫）', !tr.text.includes('（書面）') && tr.label === '書面', tr);
+
+console.log('\n[7g] 擁有者密碼保護（雲端記錄）');
+// 訪客（未解鎖）：問一條 → 本機存＋雲端 upsert；歷史顯示「本機記錄」
+await page.evaluate(() => [...document.querySelectorAll('.qc-tool-btn')].find((b) => b.textContent.includes('新對話')).click());
+await sleep(200);
+await type('測試同步問題甲');
+await sendAndWait();
+let own = await page.evaluate(() => ({
+  lockBtn: !!document.querySelector('.qc-owner'),
+  histLabel: document.querySelector('.qc-hist')?.querySelector('option')?.textContent.trim() || null,
+}));
+ok('擁有者鎖按鈕存在', own.lockBtn);
+ok('訪客問事已 upsert 上雲（模擬）', libEntries.some((e) => e.firstQ === '測試同步問題甲'), libEntries.map((e) => e.firstQ));
+ok('未解鎖歷史＝本機記錄', own.histLabel === '本機記錄…', own.histLabel);
+// 擁有者解鎖（mock prompt 輸入密碼）
+await page.evaluate(() => { window.prompt = () => 'test123'; });
+await page.evaluate(() => document.querySelector('.qc-owner').click());
+await sleep(500);
+own = await page.evaluate(() => ({
+  unlocked: document.querySelector('.qc-owner')?.textContent.includes('擁有者'),
+  histLabel: document.querySelector('.qc-hist')?.querySelector('option')?.textContent.trim() || null,
+  err: !!document.querySelector('.qc-body .ai-error'),
+}));
+ok('解鎖後顯示擁有者', own.unlocked);
+ok('解鎖後歷史＝全部問事記錄', own.histLabel === '全部問事記錄…', own.histLabel);
+ok('啱密碼無錯誤提示', !own.err);
+// 雲端記錄包含訪客問題
+ok('雲端記錄拉到訪客問題', await page.evaluate(() => {
+  const sel = document.querySelector('.qc-hist');
+  return sel && [...sel.options].some((o) => o.textContent.includes('測試同步問題甲'));
+}));
+// 錯密碼 → 403 → 錯誤提示
+await page.evaluate(() => { window.prompt = () => 'wrong'; });
+await page.evaluate(() => document.querySelector('.qc-owner').click()); // 鎖返
+await sleep(200);
+await page.evaluate(() => document.querySelector('.qc-owner').click()); // 再開（錯密碼）
+await sleep(500);
+own = await page.evaluate(() => ({ err: document.querySelector('.qc-body .ai-error')?.textContent.trim() || null }));
+ok('錯密碼顯示錯誤', own.err && own.err.includes('密碼唔啱'), own.err);
+// 還原：鎖返
+await page.evaluate(() => document.querySelector('.qc-owner').click());
+await sleep(200);
 
 console.log('\n[8] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
