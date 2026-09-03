@@ -65,20 +65,22 @@ export default function QChat() {
   const [err, setErr] = useState('');
   const [chartTime, setChartTime] = useState(null); // Date of current chart
   const [qtype, setQtype] = useState('');
-  const [chatLib, setChatLib] = useCloudStore('qimen_chat', CHAT_KEY, {});
+  const [chatLib, setChatLib, chatCloudOn] = useCloudStore('qimen_chat', CHAT_KEY, {});
   const [convId, setConvId] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
-  // 對話設定：語氣（白話＝港式口語／書面＝內地規範書面中文）、詳略、遠程取用神（開盤人／問事人性別）
-  // 預設：遠程＋開盤人男（開盤人固定為男性用家本人；別人多數透過遠程問事）。問事人性別按問事者逐次選。
+  // 對話設定：界面（簡易＝給唔識嘅人：只揀語氣同詳略，固定近程此刻起盤；專業＝全部選項）、
+  // 語氣（白話＝港式口語／書面＝內地規範書面中文）、詳略、遠程取用神（開盤人／問事人性別）
+  // 預設：簡易界面（分享出去嘅人用得）；專業界面預設遠程＋開盤人男（用家本人為男性開盤者）
   const QC_SET_KEY = 'mo_qchat_settings_v2';
   const [qcSet, setQcSet] = useState(() => {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(QC_SET_KEY) || '{}'); } catch { }
-    return { style: '白話', detail: '適中', mode: '遠程', caster: '男', querent: '', ...saved };
+    return { ui: 'simple', style: '白話', detail: '適中', mode: '遠程', caster: '男', querent: '', ...saved };
   });
   useEffect(() => { try { localStorage.setItem(QC_SET_KEY, JSON.stringify(qcSet)); } catch { } }, [qcSet]);
   const toggleGender = (key, val) => setQcSet((s) => ({ ...s, [key]: s[key] === val ? '' : val }));
+  const isPro = qcSet.ui === 'pro';
   // 起盤時間：預設此刻；自訂＝對方問問題的原始時辰（上一個時辰問、而家先開盤）。不存本機，屬當次操作
   const [castMode, setCastMode] = useState('now'); // now | custom
   const [castCustom, setCastCustom] = useState('');
@@ -86,13 +88,14 @@ export default function QChat() {
   const [castNum, setCastNum] = useState('');
   const [chartJu, setChartJu] = useState(null); // 起盤時取定的局數覆蓋（null＝正規）
   const castTime = () => {
-    if (castMode === 'custom' && castCustom) {
+    if (isPro && castMode === 'custom' && castCustom) { // 簡易界面固定此刻起盤
       const d = new Date(castCustom);
       if (!isNaN(d)) return d;
     }
     return new Date();
   };
   const castJuNow = () => {
+    if (!isPro) return null; // 簡易界面固定正規時盤
     const n = parseInt(castNum, 10);
     if (isNaN(n) || n < 1) return null;
     return ((n - 1) % 9) + 1; // 報數 1-9 對應 1-9 局，大於 9 循環
@@ -109,7 +112,8 @@ export default function QChat() {
     ? `${chartTime.getFullYear()}-${chartTime.getMonth() + 1}-${chartTime.getDate()} ${String(chartTime.getHours()).padStart(2, '0')}:${String(chartTime.getMinutes()).padStart(2, '0')}`
     : '';
   // 事主取宮：近程＝日干落宮；遠程＝月干（開盤人與問事人同性別換陰陽），甲以值符論 —— 與主盤自動標記同一邏輯
-  const querent = { mode: qcSet.mode, caster: qcSet.caster, querent: qcSet.querent };
+  // 簡易界面固定近程（問事者本人問）；專業界面跟設定
+  const querent = { mode: isPro ? qcSet.mode : '近程', caster: qcSet.caster, querent: qcSet.querent };
   const shiZhuPalace = result ? ((shiZhuStem(result, querent) || {}).palace ?? null) : null;
   const shiGanPalace = result ? result.pillarMarkPalaces[3] : null;
   const askAnalysis = useMemo(
@@ -210,6 +214,29 @@ export default function QChat() {
 
   const ysPalaces = askAnalysis ? askAnalysis.rows.filter((r) => r.palace).map((r) => r.palace) : [];
 
+  // 語音輸入（Web Speech API；Android Chrome 支援，iOS 未必）——辨識結果附加到輸入框
+  const [listening, setListening] = useState(false);
+  const recogRef = useRef(null);
+  const speechSupported = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  const toggleListen = () => {
+    if (listening) { try { recogRef.current && recogRef.current.stop(); } catch { } return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const r = new SR();
+    r.lang = 'yue-Hant-HK'; // 粵語（香港）；瀏覽器不支援會自行回退預設語言
+    r.interimResults = false;
+    r.maxAlternatives = 1;
+    r.onresult = (e) => {
+      const txt = (e.results[0] && e.results[0][0] && e.results[0][0].transcript) || '';
+      if (txt) setInput((v) => (v ? `${v} ${txt}` : txt));
+    };
+    r.onend = () => setListening(false);
+    r.onerror = () => setListening(false);
+    recogRef.current = r;
+    setListening(true);
+    try { r.start(); } catch { setListening(false); }
+  };
+
   // 白話 → 規範書面中文（內地可讀）：轉換結果存入訊息並隨對話存檔
   const [translating, setTranslating] = useState(-1);
   const translateMsg = async (i) => {
@@ -247,10 +274,18 @@ export default function QChat() {
               })}
             </select>
           )}
+          <span className={`cloud-dot ${chatCloudOn ? 'on' : 'off'}`} title={chatCloudOn ? '雲端同步中：其他設備都睇到' : '只存本機：其他設備睇唔到（請喺 Vercel 連接 KV 資料庫）'}>{chatCloudOn ? '雲端同步' : '本機'}</span>
         </div>
 
-        {/* 對話設定：語氣／詳略／遠程取用神 */}
+        {/* 對話設定：界面（簡易／專業）＋語氣／詳略；遠程取用神等進階選項只喺專業界面顯示 */}
         <div className="qc-settings">
+          <div className="q-group">
+            <span className="q-label">界面</span>
+            <div className="seg">
+              <button type="button" className={!isPro ? 'on' : ''} onClick={() => setQcSet((s) => ({ ...s, ui: 'simple' }))} title="簡易：只揀語氣同詳略，固定近程此刻起盤">簡易</button>
+              <button type="button" className={isPro ? 'on' : ''} onClick={() => setQcSet((s) => ({ ...s, ui: 'pro' }))} title="專業：遠程取用神、起盤時間、取數起局等全部選項">專業</button>
+            </div>
+          </div>
           <div className="q-group">
             <span className="q-label">語氣</span>
             <div className="seg">
@@ -269,16 +304,18 @@ export default function QChat() {
               ))}
             </div>
           </div>
-          <div className="q-group">
-            <span className="q-label">問事</span>
-            <div className="seg">
-              {['近程', '遠程'].map((v) => (
-                <button key={v} type="button" className={qcSet.mode === v ? 'on' : ''} onClick={() => setQcSet((s) => ({ ...s, mode: v }))}
-                  title={v === '近程' ? '問事人本人在場：日干為事主' : '分享給別人問事：月干取事主（同性別換陰陽）'}>{v}</button>
-              ))}
+          {isPro && (
+            <div className="q-group">
+              <span className="q-label">問事</span>
+              <div className="seg">
+                {['近程', '遠程'].map((v) => (
+                  <button key={v} type="button" className={qcSet.mode === v ? 'on' : ''} onClick={() => setQcSet((s) => ({ ...s, mode: v }))}
+                    title={v === '近程' ? '問事人本人在場：日干為事主' : '分享給別人問事：月干取事主（同性別換陰陽）'}>{v}</button>
+                ))}
+              </div>
             </div>
-          </div>
-          {qcSet.mode === '遠程' && (
+          )}
+          {isPro && qcSet.mode === '遠程' && (
             <>
               <div className="q-group">
                 <span className="q-label">開盤人</span>
@@ -294,49 +331,51 @@ export default function QChat() {
               </div>
             </>
           )}
-          {chartTime && shiZhuPalace && (
+          {isPro && chartTime && shiZhuPalace && (
             <span className="q-result">事主落 {PALACE_SHORT[shiZhuPalace]}宮（{qcSet.mode}）</span>
           )}
         </div>
 
-        {/* 起盤時間：預設此刻；自訂＝對方原本問問題的時辰（適用於下一只盤） */}
-        <div className="qc-settings qc-cast-row">
-          <div className="q-group">
-            <span className="q-label">起盤時間</span>
-            <div className="seg">
-              <button type="button" className={castMode === 'now' ? 'on' : ''} onClick={() => setCastMode('now')} title="以提問當刻起盤">此刻</button>
-              <button type="button" className={castMode === 'custom' ? 'on' : ''} onClick={() => setCastMode('custom')} title="對方上一個時辰問的，而家先開盤">自訂</button>
+        {/* 起盤時間＋取數起局（只限專業界面） */}
+        {isPro && (
+          <div className="qc-settings qc-cast-row">
+            <div className="q-group">
+              <span className="q-label">起盤時間</span>
+              <div className="seg">
+                <button type="button" className={castMode === 'now' ? 'on' : ''} onClick={() => setCastMode('now')} title="以提問當刻起盤">此刻</button>
+                <button type="button" className={castMode === 'custom' ? 'on' : ''} onClick={() => setCastMode('custom')} title="對方上一個時辰問的，而家先開盤">自訂</button>
+              </div>
             </div>
+            {castMode === 'custom' && (
+              <input
+                type="datetime-local"
+                className="qc-cast-input"
+                value={castCustom}
+                onChange={(e) => setCastCustom(e.target.value)}
+                title="對方問問題的原始時間（下一只盤生效）"
+              />
+            )}
+            {castMode === 'custom' && (
+              <span className="qc-cast-note">{chartTime ? '下一只盤生效（先「起新盤」再問）' : '第一句問題即按此時間起盤'}</span>
+            )}
+            <div className="q-group">
+              <span className="q-label">取數起局</span>
+              <input
+                type="number"
+                min="1"
+                className="qc-num-input"
+                value={castNum}
+                placeholder="報數"
+                title="同一時辰多人問事：對方隨口報一個數，以數定局（1-9 循環，陰陽遁仍依節氣）；留空＝正規時盤"
+                onChange={(e) => setCastNum(e.target.value)}
+              />
+            </div>
+            {castNum && parseInt(castNum, 10) >= 1 && (
+              <span className="qc-cast-note">取數 {castNum} → {((parseInt(castNum, 10) - 1) % 9) + 1} 局{chartTime ? '（下一只盤生效）' : ''}</span>
+            )}
           </div>
-          {castMode === 'custom' && (
-            <input
-              type="datetime-local"
-              className="qc-cast-input"
-              value={castCustom}
-              onChange={(e) => setCastCustom(e.target.value)}
-              title="對方問問題的原始時間（下一只盤生效）"
-            />
-          )}
-          {castMode === 'custom' && (
-            <span className="qc-cast-note">{chartTime ? '下一只盤生效（先「起新盤」再問）' : '第一句問題即按此時間起盤'}</span>
-          )}
-          <div className="q-group">
-            <span className="q-label">取數起局</span>
-            <input
-              type="number"
-              min="1"
-              className="qc-num-input"
-              value={castNum}
-              placeholder="報數"
-              title="同一時辰多人問事：對方隨口報一個數，以數定局（1-9 循環，陰陽遁仍依節氣）；留空＝正規時盤"
-              onChange={(e) => setCastNum(e.target.value)}
-            />
-          </div>
-          {castNum && parseInt(castNum, 10) >= 1 && (
-            <span className="qc-cast-note">取數 {castNum} → {((parseInt(castNum, 10) - 1) % 9) + 1} 局{chartTime ? '（下一只盤生效）' : ''}</span>
-          )}
-        </div>
-        {qcSet.mode === '遠程' && (!qcSet.caster || !qcSet.querent) && (
+        )}
+        {isPro && qcSet.mode === '遠程' && (!qcSet.caster || !qcSet.querent) && (
           <div className="qc-remote-hint">遠程問事：請先設定開盤人與問事人性別，先至好以月干取事主（未設則暫以日干論）。</div>
         )}
 
@@ -393,15 +432,28 @@ export default function QChat() {
 
         {err && <div className="ai-error">{err}</div>}
         <div className="qc-input-row">
-          <input
+          <textarea
             ref={inputRef}
-            className="qc-input"
+            className="qc-input qc-textarea"
             value={input}
             placeholder="講出你想問的事…"
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+            rows={1}
+            onChange={(e) => {
+              setInput(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`; // 自動長高，最長 140px
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} // Enter 送出，Shift+Enter 換行
             disabled={busy}
           />
+          {speechSupported && (
+            <button
+              type="button"
+              className={`qc-mic${listening ? ' on' : ''}`}
+              onClick={toggleListen}
+              title={listening ? '聽緊…再撳停止' : '語音輸入（粵語）'}
+            >{listening ? '⏹' : '🎤'}</button>
+          )}
           <button type="button" className="fu-send" onClick={send} disabled={busy || !input.trim()}>送出</button>
         </div>
         <div className="sym-combo-note">（第一句問題即以此刻時間起盤；其後追問沿用同一盤，換話題會自動重新取用用神；「起新盤」則以新時刻再排。語氣可選白話／書面，詳略可選簡潔／適中／詳細；遠程問事以月干取事主，與主盤自動標記同一邏輯。分析口徑與「AI 問事解讀」一致）</div>
