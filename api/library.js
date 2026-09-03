@@ -29,7 +29,12 @@ const kvKeyFor = (ns) => `mo-yixue:lib:${ns}`;
 // Token：BLOB_READ_WRITE_TOKEN（靜態長期）或 VERCEL_OIDC_TOKEN（連接 store 後 Vercel 自動喺 runtime 注入，短期輪轉）。
 // 注意：連接 store 時自訂 prefix（如 yinpan_AI_STORE_ID）只係識別用，授權靠上述 token，無需讀 prefix 變數。
 function blobConfig() {
-  const token = process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN;
+  let token = process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN;
+  if (!token) {
+    // 自訂 prefix 嘅 Blob read-write token（如 yinpan_AI_READ_WRITE_TOKEN）
+    const k = Object.keys(process.env).find((key) => /_READ_WRITE_TOKEN$/i.test(key));
+    if (k) token = process.env[k];
+  }
   return token ? { type: 'blob', token: String(token).trim() } : null;
 }
 const BLOB_API = 'https://vercel.com/api/blob';
@@ -71,9 +76,9 @@ export default async function handler(req, res) {
     const names = Object.keys(process.env);
     res.status(200).json({
       kv: !!(process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL),
-      blobRW: !!process.env.BLOB_READ_WRITE_TOKEN,
+      blobRW: !!process.env.BLOB_READ_WRITE_TOKEN || names.some((k) => /_READ_WRITE_TOKEN$/i.test(k)),
       oidc: !!process.env.VERCEL_OIDC_TOKEN,
-      storeLike: names.filter((k) => /STORE|BLOB|KV_|REDIS|UPSTASH|OIDC/i.test(k)),
+      storeLike: names.filter((k) => /STORE|BLOB|KV_|REDIS|UPSTASH|OIDC|READ_WRITE/i.test(k)),
     });
     return;
   }
