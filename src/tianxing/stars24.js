@@ -64,7 +64,7 @@ const ZHAI_YOUNIAN = {
   巽: { 4: '伏位', 9: '天醫', 2: '五鬼', 7: '六煞', 6: '禍害', 1: '生氣', 8: '絕命', 3: '延年' },
   離: { 9: '伏位', 2: '六煞', 7: '五鬼', 6: '絕命', 1: '延年', 8: '禍害', 3: '生氣', 4: '天醫' },
   坤: { 2: '伏位', 7: '天醫', 6: '延年', 1: '絕命', 8: '生氣', 3: '禍害', 4: '五鬼', 9: '六煞' },
-  兌: { 7: '伏位', 6: '生氣', 1: '禍害', 8: '延年', 3: '絕命', 4: '五鬼', 9: '六煞', 2: '天醫' },
+  兌: { 7: '伏位', 6: '生氣', 1: '禍害', 8: '延年', 3: '絕命', 4: '六煞', 9: '五鬼', 2: '天醫' },
 };
 // 每遊年星轄三小星（順時針配該宮三山）
 const GROUP_STARS24 = {
@@ -83,10 +83,10 @@ export function star24MapBazhai(sitMountain) {
   return map;
 }
 
-// 排盤法：'xuandao'（玄道／講堂，甲乙兩盤）或 'bazhai'（八宅遊年，每坐山一盤）
+// 排盤法：'bazhai'（八宅遊年，坐山起伏位，每坐山一盤——預設）或 'xuandao'（玄道／講堂立極尺，甲乙兩盤）
 export const STAR24_METHODS = [
-  { id: 'xuandao', label: '玄道（講堂）' },
   { id: 'bazhai', label: '八宅遊年' },
+  { id: 'xuandao', label: '玄道（講堂立極尺）' },
 ];
 export function star24MapBy(method, sitMountain) {
   return method === 'bazhai' ? star24MapBazhai(sitMountain) : star24Map(sitMountain);
@@ -94,7 +94,7 @@ export function star24MapBy(method, sitMountain) {
 
 // 排盤法全域設定（localStorage＋事件同步各分頁）
 const METHOD_KEY = 'mo_star24_method';
-export const getStar24Method = () => { try { const v = localStorage.getItem(METHOD_KEY); return v === 'bazhai' ? 'bazhai' : 'xuandao'; } catch { return 'xuandao'; } };
+export const getStar24Method = () => { try { const v = localStorage.getItem(METHOD_KEY); return v === 'xuandao' ? 'xuandao' : 'bazhai'; } catch { return 'bazhai'; } };
 export const setStar24Method = (m) => { try { localStorage.setItem(METHOD_KEY, m); } catch { } try { window.dispatchEvent(new Event('mo-star24-method')); } catch { } };
 
 // 各山中心度數（子=0，順時針每山 15°）
@@ -108,7 +108,7 @@ export const PALACE_WX24 = { 1: '水', 2: '土', 3: '木', 4: '木', 6: '金', 7
 // 自動分析：坐向星、各司其職方位、吉凶分佈、星宮五行生剋
 const SHENG24 = { 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' };
 const KE24 = { 木: '土', 土: '水', 水: '火', 火: '金', 金: '木' };
-export function analyze24(sitM, faceM, method = 'xuandao') {
+export function analyze24(sitM, faceM, method = 'bazhai') {
   const map = star24MapBy(method, sitM);
   const palaceOf = (m) => Object.keys(PALACE_MOUNTAINS24).find((p) => PALACE_MOUNTAINS24[p].includes(m));
   const rows = M24_ORDER.map((m) => {

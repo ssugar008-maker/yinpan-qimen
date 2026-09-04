@@ -46,9 +46,9 @@ let st = await page.evaluate(() => {
 ok('二十四天星區塊存在（坐子山午向）', !!st && st.head.includes('子山') && st.head.includes('午向'), st && st.head);
 ok('天星環含天錢與屍氣', st && st.hasQian && st.hasShiqi);
 ok('24 山名全在環上', st && st.mountains === 24, st && st.mountains);
-ok('坐向星卡：坐子天錢（吉）／向午天權（凶）', st && st.sumCards.some((c) => c.includes('子山') && c.includes('天錢')) && st.sumCards.some((c) => c.includes('向首') && c.includes('天權')), st && st.sumCards);
+ok('坐向星卡：坐子輔翼（吉）／向午開陽（吉）【八宅遊年坎宅】', st && st.sumCards.some((c) => c.includes('子山') && c.includes('輔翼')) && st.sumCards.some((c) => c.includes('向首') && c.includes('開陽')), st && st.sumCards);
 ok('各司其職 8 項', st && st.duties === 8, st && st.duties);
-ok('凶位警示含屍氣大凶在壬山', st && st.warns.some((w) => w.includes('屍氣') && w.includes('大凶') && w.includes('壬山')), st && st.warns[0]);
+ok('凶位警示含屍氣大凶在申山【坎宅絕命在坤】', st && st.warns.some((w) => w.includes('屍氣') && w.includes('大凶') && w.includes('申山')), st && st.warns[0]);
 ok('星宮生剋 16 行', st && st.rels === 16, st && st.rels);
 
 console.log('\n[2] 換坐山（午）→ 天星盤同步（共用坐向）');
@@ -65,8 +65,8 @@ st = await page.evaluate(() => {
   return { head: det.querySelector('.panel-head').textContent.trim(), cards, dutyQian };
 });
 ok('標題同步為午山子向', st.head.includes('午山') && st.head.includes('子向'), st.head);
-ok('乙盤：坐午天孫／向子屍氣', st.cards.some((c) => c.includes('午山') && c.includes('天孫')) && st.cards.some((c) => c.includes('向首') && c.includes('屍氣')), st.cards);
-ok('乙盤：天錢在癸山', st.dutyQian && st.dutyQian.includes('癸山'), st.dutyQian);
+ok('離宅：坐午輔翼／向子開陽', st.cards.some((c) => c.includes('午山') && c.includes('輔翼')) && st.cards.some((c) => c.includes('向首') && c.includes('開陽')), st.cards);
+ok('離宅：天錢在壬山（坎宮延年）', st.dutyQian && st.dutyQian.includes('壬山'), st.dutyQian);
 // 還原坐子
 await page.evaluate(() => {
   const sel = [...document.querySelectorAll('select')].find((s) => [...s.options].some((o) => o.textContent.includes('午山')));
