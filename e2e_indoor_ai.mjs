@@ -137,22 +137,24 @@ await sleep(200);
 sf = await page.evaluate(() => ({ marker: [...document.querySelectorAll('.indoor-canvas-wrap svg text')].some((x) => x.textContent === '☀'), val: document.querySelector('.indoor-starface input[type=number]')?.value }));
 ok('清除後 ☀ 標記消失', !sf.marker && (sf.val === '' || sf.val == null), sf);
 
-console.log('\n[4b] 排盤法選擇（玄道／八宅遊年）—— 每坐向出唔同盤，逐山對羅盤');
-// 預設玄道：坐子 → 子山天錢。室內 AI payload 嘅房間（正北坎宮）星＝天錢
+console.log('\n[4b] 排盤法選擇（八宅遊年預設／玄道）—— 每坐向出唔同盤，逐山對羅盤');
+// 預設八宅遊年：坐子（坎宅）→ 坎宮伏位 → 正北房間星＝輔翼
 await page.evaluate(() => document.querySelector('.indoor-ai .ai-btn').click());
 await sleep(500);
 let mStar = lastIndoor && lastIndoor.indoor.rooms[0].palaces[0].star;
-ok('玄道排法：正北房間星＝天錢', mStar === '天錢', mStar);
-ok('玄道排法 payload 標 method xuandao', lastIndoor && lastIndoor.indoor.method === 'xuandao', lastIndoor && lastIndoor.indoor.method);
-// 切八宅遊年
-await page.evaluate(() => [...document.querySelectorAll('.indoor-starface .seg button')].find((b) => b.textContent.includes('八宅遊年')).click());
+ok('八宅遊年（預設）：正北房間星＝輔翼（伏位組）', mStar === '輔翼', mStar);
+ok('八宅遊年 payload 標 method bazhai', lastIndoor && lastIndoor.indoor.method === 'bazhai', lastIndoor && lastIndoor.indoor.method);
+// 切玄道（講堂立極尺）
+await page.evaluate(() => [...document.querySelectorAll('.indoor-starface .seg button')].find((b) => b.textContent.includes('玄道')).click());
 await sleep(400);
 await page.evaluate(() => document.querySelector('.indoor-ai .ai-btn').click());
 await sleep(500);
 mStar = lastIndoor && lastIndoor.indoor.rooms[0].palaces[0].star;
-ok('八宅遊年：正北房間星＝輔翼（伏位組，唔同咗）', mStar === '輔翼', mStar);
-ok('八宅遊年 payload 標 method bazhai', lastIndoor && lastIndoor.indoor.method === 'bazhai', lastIndoor && lastIndoor.indoor.method);
-// 八宅遊年：唔同坐向出唔同盤 —— 改天星向首（坐山）→ 星位變
+ok('玄道排法：正北房間星＝天錢（唔同咗）', mStar === '天錢', mStar);
+ok('玄道 payload 標 method xuandao', lastIndoor && lastIndoor.indoor.method === 'xuandao', lastIndoor && lastIndoor.indoor.method);
+// 切返八宅遊年，改天星向首（坐山）→ 星位變（每坐向唔同盤）
+await page.evaluate(() => [...document.querySelectorAll('.indoor-starface .seg button')].find((b) => b.textContent.includes('八宅遊年')).click());
+await sleep(300);
 await page.evaluate(() => {
   const i = document.querySelector('.indoor-starface input[type=number]');
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
@@ -164,7 +166,6 @@ await sleep(500);
 const mStar2 = lastIndoor && lastIndoor.indoor.rooms[0].palaces[0].star;
 ok('八宅遊年＋天星坐酉：正北房間星再變（每坐向唔同盤）', mStar2 !== '輔翼' && mStar2 !== '天錢', mStar2);
 // 還原
-await page.evaluate(() => [...document.querySelectorAll('.indoor-starface .seg button')].find((b) => b.textContent.includes('玄道')).click());
 await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === '清除' && x.closest('.indoor-starface')); if (b) b.click(); });
 await sleep(200);
 
@@ -177,7 +178,7 @@ const txMethod = await page.evaluate(() => {
   if (!det) return null;
   return { has: [...det.querySelectorAll('.ai-theme-chip')].map((b) => b.textContent.trim()) };
 });
-ok('玄空天星區有排盤法選擇', txMethod && txMethod.has.includes('玄道（講堂）') && txMethod.has.includes('八宅遊年'), txMethod && txMethod.has);
+ok('玄空天星區有排盤法選擇', txMethod && txMethod.has.some((x) => x.includes('玄道')) && txMethod.has.includes('八宅遊年'), txMethod && txMethod.has);
 // 還原室內分頁
 await page.evaluate(() => [...document.querySelectorAll('.tab')].find((b) => b.textContent.includes('室內')).click());
 await sleep(500);
