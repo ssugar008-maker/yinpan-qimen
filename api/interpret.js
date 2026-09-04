@@ -541,15 +541,22 @@ ${one(d.chartB, d.labelB || '乙盤')}
 
 // AI 讀平面圖（vision）：搵出圖入面嘅房間／空間＋位置（0–1 比例），回 JSON
 const FP_ROOM_TYPES = ['大門', '玄關', '客廳', '飯廳', '廚房', '睡房', '主人房', '書房', '廁所', '浴室', '露台', '走廊', '儲物房', '神位', '樓梯'];
+// 可辨認嘅重要家具／固定裝置（風水關鍵位）
+const FP_FEATURE_TYPES = ['床', '灶頭', '廁所', '門', '窗'];
 function readFloorplanPrompt() {
-  return `你係平面圖分析員。呢張係一個住宅平面圖（俯視圖）。請搵出圖入面所有房間／空間，並估計佢哋嘅位置。
+  return `你係平面圖分析員。呢張係一個住宅平面圖（俯視圖）。請搵出圖入面嘅房間、重要家具同埋門，並估計佢哋嘅位置（同方向）。
 只回 JSON 物件（唔好任何其他文字、唔好代碼框）：
-{"rooms":[{"type":"房間類型","cx":0.0,"cy":0.0,"x1":0.0,"y1":0.0,"x2":0.0,"y2":0.0}]}
+{"rooms":[{"type":"房間類型","cx":0.0,"cy":0.0,"x1":0.0,"y1":0.0,"x2":0.0,"y2":0.0}],
+ "features":[{"type":"床／灶頭／廁所／門／窗","cx":0.0,"cy":0.0,"dir":0}]}
 規則：
-- type 只可以用以下其中之一：${FP_ROOM_TYPES.join('、')}。
-- cx、cy＝房間中心，用 0–1 嘅比例（相對成張圖嘅寬同高，左上角係 0,0）。
-- x1、y1、x2、y2＝房間範圍嘅左上同右下角（0–1 比例）。如果唔肯定確實範圍，就畀個大概。
-- 儘量覆蓋所有可辨認嘅空間；廁所／浴室細就標細啲。順序由大到細。`;
+- rooms.type 只可以用：${FP_ROOM_TYPES.join('、')}。cx、cy＝房間中心（0–1 比例，左上角係 0,0）；x1,y1,x2,y2＝房間範圍左上同右下（0–1）。儘量覆蓋所有可辨認空間，順序由大到細。
+- features 用嚟標重要家具同固定裝置：
+  - 「床」：睡房入面嘅床。dir＝床頭方向（床頭板／枕頭嗰邊指向邊），用 0–359 度（0＝圖嘅正上方，順時針計）。
+  - 「灶頭」：廚房嘅爐灶位置（唔使 dir）。
+  - 「廁所」：廁所入面嘅座廁位置（唔使 dir）。
+  - 「門」：每道門嘅位置。dir＝門口朝向／打開方向（0–359 度，0＝圖嘅正上方，順時針）。**要數晒所有門**。
+  - 「窗」：窗嘅位置（唔使 dir）。
+- 唔肯定方向就畀個最合理嘅估計。冇嘅項目就唔好出喺 features。`;
 }
 
 export default async function handler(req, res) {
@@ -593,8 +600,11 @@ export default async function handler(req, res) {
       const rooms = (parsed && Array.isArray(parsed.rooms) ? parsed.rooms : [])
         .map((rm) => ({ type: FP_ROOM_TYPES.includes(rm && rm.type) ? rm.type : '睡房', cx: +rm.cx, cy: +rm.cy, x1: +rm.x1, y1: +rm.y1, x2: +rm.x2, y2: +rm.y2 }))
         .filter((rm) => [rm.cx, rm.cy, rm.x1, rm.y1, rm.x2, rm.y2].every((v) => isFinite(v)));
+      const features = (parsed && Array.isArray(parsed.features) ? parsed.features : [])
+        .map((f) => ({ type: FP_FEATURE_TYPES.includes(f && f.type) ? f.type : '門', cx: +f.cx, cy: +f.cy, dir: (f.dir != null && isFinite(+f.dir)) ? ((+f.dir) % 360 + 360) % 360 : null }))
+        .filter((f) => isFinite(f.cx) && isFinite(f.cy));
       const u = data && data.usage;
-      res.status(200).json({ json: { rooms }, model: visionModel, usage: u ? { pt: u.prompt_tokens || 0, ct: u.completion_tokens || 0 } : null });
+      res.status(200).json({ json: { rooms, features }, model: visionModel, usage: u ? { pt: u.prompt_tokens || 0, ct: u.completion_tokens || 0 } : null });
     } catch (e) { res.status(500).json({ error: 'AI 讀圖失敗', detail: String(e && e.message || e) }); }
     return;
   }
