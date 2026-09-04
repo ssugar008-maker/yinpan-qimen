@@ -182,6 +182,20 @@ ok('玄空天星區有排盤法選擇', txMethod && txMethod.has.includes('玄�
 await page.evaluate(() => [...document.querySelectorAll('.tab')].find((b) => b.textContent.includes('室內')).click());
 await sleep(500);
 
+console.log('\n[4d] ☀點光位唔會再落加點（重疊修正）');
+const pinsBefore = await page.evaluate(() => document.querySelectorAll('.indoor-canvas-wrap svg circle[fill="#ff8800"]').length);
+await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('點光位')).click()); // 開 ☀（仲喺 pin 模式）
+await sleep(150);
+const box2 = await page.evaluate(() => { const r = document.querySelector('.indoor-canvas-wrap svg').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+await page.mouse.click(box2.x + box2.w * 0.5 + box2.w * 0.3, box2.y + box2.h * 0.5); // 點中心正東
+await sleep(300);
+const after = await page.evaluate(() => ({
+  pins: document.querySelectorAll('.indoor-canvas-wrap svg circle[fill="#ff8800"]').length,
+  starFace: document.querySelector('.indoor-starface input[type=number]')?.value,
+}));
+ok('☀點光位：設到天星向首（≈90°）', after.starFace !== '' && Math.abs(parseFloat(after.starFace) - 90) < 8, after.starFace);
+ok('☀點光位：唔會落加點（重疊修正）', after.pins === pinsBefore, { before: pinsBefore, after: after.pins });
+
 console.log('\n[5] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
 
