@@ -40,17 +40,56 @@ export function screenAngle(p1, p2) {
   return norm360((Math.atan2(dx, -dy) * 180) / Math.PI);
 }
 
-// 計算一個區域（多邊形點）從中心跨越哪些山（角度範圍）；單點則回傳所在山
+// 射線與多邊形嘅相交弦長（由 center 以圖像角 saDeg 射出，同多邊形邊相交嘅最近/最遠距離）
+// 冇相交 → null。center 喺多邊形入面時 tMin=0。
+function rayChord(center, saDeg, pts) {
+  const rad = (saDeg * Math.PI) / 180;
+  const dx = Math.sin(rad), dy = -Math.cos(rad); // 圖像角：0=上，順時針
+  let tMin = Infinity, tMax = -Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const ex = b.x - a.x, ey = b.y - a.y;
+    const denom = dx * ey - dy * ex;
+    if (Math.abs(denom) < 1e-9) continue; // 平行
+    const wx = a.x - center.x, wy = a.y - center.y;
+    const t = (wx * ey - wy * ex) / denom; // 射線參數
+    const s = (wx * dy - wy * dx) / denom; // 邊參數
+    if (t >= 0 && s >= 0 && s <= 1) { if (t < tMin) tMin = t; if (t > tMax) tMax = t; }
+  }
+  if (tMax < 0 || tMin === Infinity) return null;
+  return [Math.max(0, tMin), tMax];
+}
+
+// 計算一個區域（多邊形）從中心跨越哪些山＋各山佔比（面積加權）。
+// 用射線掃描（每 0.5°），準確涵蓋跨正北／大範圍嘅區域（舊版用頂點 min/max 會漏咗邊緣山）。
+// 回傳 [{ mountain, pct }]（pct 加總≈100，按該山所佔面積比例）；單點 → 所在山 100%。
+export function coveredMountainsDetailed(pts, center, rot) {
+  if (!pts || !pts.length || !center) return [];
+  if (pts.length === 1) {
+    const b = norm360(screenAngle(center, pts[0]) - rot);
+    return [{ mountain: mountainAt(b).c, deg: Math.round(b * 10) / 10, pct: 100 }];
+  }
+  const STEP = 0.5;
+  const areaW = {}; // 山 → 面積權重（弦長平方差 ≈ 扇形面積）
+  let total = 0;
+  for (let sa = 0; sa < 360; sa += STEP) {
+    const chord = rayChord(center, sa, pts);
+    if (!chord) continue;
+    const bearing = norm360(sa - rot); // 圖像角 → 羅盤方位
+    const mc = mountainAt(bearing).c;
+    const w = (chord[1] * chord[1] - chord[0] * chord[0]) / 2;
+    areaW[mc] = (areaW[mc] || 0) + w;
+    total += w;
+  }
+  if (!total) return [];
+  return Object.entries(areaW)
+    .map(([mountain, w]) => ({ mountain, pct: Math.round((w / total) * 1000) / 10 }))
+    .sort((a, b) => b.pct - a.pct);
+}
+
+// 計算一個區域（多邊形點）從中心跨越哪些山；單點則回傳所在山
 export function coveredMountains(pts, center, rot) {
-  const bs = pts.map((p) => norm360(screenAngle(center, p) - rot));
-  if (!bs.length) return [];
-  if (bs.length === 1) return [mountainAt(bs[0]).c];
-  const mn = Math.min(...bs), mx = Math.max(...bs);
-  const wrap = mx - mn > 180; // 跨正北
-  return MOUNTAINS24.filter((m) => {
-    if (!wrap) return mn <= m.deg + 7.5 && mx >= m.deg - 7.5; // 扇形與山區（±7.5°）有重疊
-    return (m.deg + 7.5 >= mx) || (m.deg - 7.5 <= mn); // 跨 0° 的情況
-  }).map((m) => m.c);
+  return coveredMountainsDetailed(pts, center, rot).map((d) => d.mountain);
 }
 
 // Point on a circle. `saDeg` is a SCREEN angle (0 = up, clockwise).

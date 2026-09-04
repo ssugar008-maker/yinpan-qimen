@@ -1,6 +1,6 @@
 // 室內平面圖標注資料 → 供 AI 分析用（玄空分頁與室內分頁共用）
 // 讀取室內分頁已存嘅平面圖、立極點、坐向、房間標注，並對照指定玄空盤計算各房間嘅宮位組合。
-import { coveredMountains, mountainAt, norm360 } from './geometry.js';
+import { coveredMountains, coveredMountainsDetailed, mountainAt, norm360 } from './geometry.js';
 import { PALACE_MOUNTAINS24, STAR24_INFO, star24MapBy, getStar24Method } from '../tianxing/stars24.js';
 import { starPair, PALACE_GUA, PALACE_DIR, PALACE_WX } from '../xuankong/engine.js';
 
@@ -32,20 +32,29 @@ export function buildIndoorRooms(layout, xkChart, xkFlow) {
   const method = layout.method || getStar24Method();
   const star24 = starSit ? star24MapBy(method, starSit) : null;
   return (layout.rooms || []).map((room) => {
-    const pts = room.pts && room.pts.length ? room.pts : [{ x: room.x, y: room.y }];
-    const mountains = coveredMountains(pts, center, rot);
+    // 山＋佔比：用家手動指定（manualMountains）就用佢（平均），否則自動偵測（面積加權）
+    let detail;
+    if (Array.isArray(room.manualMountains) && room.manualMountains.length) {
+      const n = room.manualMountains.length;
+      detail = room.manualMountains.map((mc) => ({ mountain: mc, pct: Math.round((1000 / n) / 10), manual: true }));
+    } else {
+      const pts = room.pts && room.pts.length ? room.pts : [{ x: room.x, y: room.y }];
+      detail = coveredMountainsDetailed(pts, center, rot);
+    }
+    const mountains = detail.map((d) => d.mountain);
     // 去重宮位（一宮可能跨多山）
     const seen = new Set();
     const palaces = [];
-    const byMountain = []; // 逐山明細（一山一星），供對話式 AI 答「邊個山好」
-    mountains.forEach((mc) => {
+    const byMountain = []; // 逐山明細（一山一星＋佔比），供對話式 AI 答「邊個山好」
+    detail.forEach((d) => {
+      const mc = d.mountain;
       const p = MOUNTAIN_TO_PALACE[mc];
       if (!p) return;
       const combo = xkChart ? starPair(xkChart.sG[p], xkChart.fG[p]) : null;
       const star = star24 ? star24[mc] : null;
       const starInfo = star ? (STAR24_INFO[star] || {}) : null;
       byMountain.push({
-        mountain: mc, palace: p, palaceName: PALACE_GUA[p], dir: PALACE_DIR[p], wx: PALACE_WX[p],
+        mountain: mc, pct: d.pct, palace: p, palaceName: PALACE_GUA[p], dir: PALACE_DIR[p], wx: PALACE_WX[p],
         shan: xkChart ? xkChart.sG[p] : null, xiang: xkChart ? xkChart.fG[p] : null,
         combo: combo ? combo.n : '', ji: combo ? combo.t : (starInfo.ji || '平'),
         star, starJi: starInfo.ji || '', starWx: starInfo.wx || '', starGoverns: starInfo.governs || '',
@@ -60,6 +69,6 @@ export function buildIndoorRooms(layout, xkChart, xkFlow) {
         star, starJi: starInfo.ji || '', starGoverns: starInfo.governs || '',
       });
     });
-    return { type: room.type, mountains, furniture: room.furniture || [], palaces, byMountain };
+    return { type: room.type, mountains, mountainPct: detail, furniture: room.furniture || [], palaces, byMountain };
   }).filter((r) => r.palaces.length);
 }

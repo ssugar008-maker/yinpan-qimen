@@ -239,6 +239,38 @@ const after = await page.evaluate(() => ({
 ok('☀點光位：設到天星向首（≈90°）', after.starFace !== '' && Math.abs(parseFloat(after.starFace) - 90) < 8, after.starFace);
 ok('☀點光位：唔會落加點（重疊修正）', after.pins === pinsBefore, { before: pinsBefore, after: after.pins });
 
+console.log('\n[4f] 房間各山佔比＋手動指定山');
+// 第一間房（主人房，單點正北子）→ 佔比 子100%
+let pctTxt = await page.evaluate(() => document.querySelector('.indoor-room .indoor-room-pct')?.innerText || '');
+ok('單點房佔比顯示（子 100%）', pctTxt.includes('子') && pctTxt.includes('100%'), pctTxt);
+// 手動指定：開第一間房嘅 ✋山 picker，揀 乾亥壬
+await page.evaluate(() => document.querySelectorAll('.indoor-room .indoor-room-mtn-btn')[0].click());
+await sleep(200);
+const pickerThere = await page.evaluate(() => !!document.querySelector('.indoor-mtn-picker'));
+ok('✋山 picker 打開（24 山）', pickerThere, pickerThere);
+await page.evaluate(() => {
+  const picker = document.querySelector('.indoor-mtn-picker');
+  ['乾', '亥', '壬'].forEach((m) => {
+    const chip = [...picker.querySelectorAll('.furn-chip')].find((b) => b.textContent.trim() === m);
+    if (chip) chip.click();
+  });
+});
+await sleep(300);
+pctTxt = await page.evaluate(() => document.querySelector('.indoor-room .indoor-room-pct')?.innerText || '');
+ok('手動指定乾亥壬 → 佔比平均（33%）', pctTxt.includes('乾') && pctTxt.includes('亥') && pctTxt.includes('壬') && pctTxt.includes('33%'), pctTxt);
+// AI 佈局分析 payload 用 override（乾亥壬）
+await page.evaluate(() => document.querySelector('.indoor-ai .ai-btn').click());
+await sleep(500);
+ok('indoorLayout payload 用手動山（乾亥壬）＋帶佔比', !!(lastIndoor && lastIndoor.indoor.rooms[0].mountains.join('') === '乾亥壬' && lastIndoor.indoor.rooms[0].byMountain[0].pct != null), lastIndoor && { m: lastIndoor.indoor.rooms[0].mountains, pct: lastIndoor.indoor.rooms[0].byMountain[0]?.pct });
+// 還原：清除手動（用返自動）
+await page.evaluate(() => {
+  const picker = document.querySelector('.indoor-mtn-picker');
+  [...picker.querySelectorAll('button')].find((b) => b.textContent.includes('清除'))?.click();
+});
+await sleep(200);
+pctTxt = await page.evaluate(() => document.querySelector('.indoor-room .indoor-room-pct')?.innerText || '');
+ok('清除手動 → 用返自動（子 100%）', pctTxt.includes('子') && pctTxt.includes('100%'), pctTxt);
+
 console.log('\n[5] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
 

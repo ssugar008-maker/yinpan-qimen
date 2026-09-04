@@ -183,15 +183,16 @@ function indoorBlock(indoor) {
   return `【室內佈局（用家已喺平面圖標注嘅實際房間）】\n${lines.join('\n')}`;
 }
 
-// 室內佈局（對話用）：逐山列出每間房所跨山嘅玄空組合＋天星（比 per-palace 更細，方便答「邊個山好」）
+// 室內佈局（對話用）：逐山列出每間房所跨山嘅佔比＋玄空組合＋天星（方便答「邊個山好」「邊間房佔邊山多」）
 function indoorChatBlock(indoor) {
   if (!indoor || !Array.isArray(indoor.rooms) || !indoor.rooms.length) return '';
   const lines = indoor.rooms.map((r) => {
-    const ms = (r.byMountain || []).map((m) => `${m.mountain}山（${m.palaceName}宮・${m.dir}）：玄空「${m.combo}」${m.ji}；天星「${m.star}」（${m.starJi}${m.starWx ? `・屬${m.starWx}` : ''}${m.starGoverns ? `，${m.starGoverns}` : ''}）`).join('\n  ');
+    const pctStr = (r.byMountain || []).map((m) => `${m.mountain}${m.pct != null ? Math.round(m.pct) + '%' : ''}`).join('・');
+    const ms = (r.byMountain || []).map((m) => `${m.mountain}山（${m.pct != null ? `佔${Math.round(m.pct)}%・` : ''}${m.palaceName}宮・${m.dir}）：玄空「${m.combo}」${m.ji}；天星「${m.star}」（${m.starJi}${m.starWx ? `・屬${m.starWx}` : ''}${m.starGoverns ? `，${m.starGoverns}` : ''}）`).join('\n  ');
     const furn = (r.furniture || []).length ? `；現有家具：${r.furniture.join('、')}` : '';
-    return `◆ ${r.type}（跨 ${(r.mountains || []).join('、')} 山）${furn}\n  ${ms}`;
+    return `◆ ${r.type}（跨 ${(r.mountains || []).join('、')} 山；佔比 ${pctStr}）${furn}\n  ${ms}`;
   });
-  return `【室內實際佈局】（用家喺平面圖標注嘅房間，逐山列出玄空組合＋天星五行吉凶）\n${lines.join('\n')}`;
+  return `【室內實際佈局】（用家喺平面圖標注嘅房間，逐山列出佔比＋玄空組合＋天星五行吉凶。佔比＝該房喺各山嘅面積比例）\n${lines.join('\n')}`;
 }
 
 // 玄空＋二十四天星＋室內：AI 顧問對話（多輪）。d = { chart, star24, indoor }
@@ -216,7 +217,8 @@ ${indoorB ? `${indoorB}\n\n` : ''}${XK_WX_REF}
 - 詳略：${detail}
 - 像真人師傅同客人面談：先直接答重點（用邊個山、用咩色、點樣擺），再講依據（邊個星曜、五行生剋旺衰、吉凶）。
 - 客人問「邊個山好／放邊度」，要具體指出山名（如「卯山」「乙山」）同埋該山嘅星曜點解啱；問「用咩色／咩料」，按五行對應（生旺、洩煞、通關、剋制）推薦具體顏色同材質。
-- 若房間跨幾個山，要比較嗰幾個山嘅星曜吉凶五行，話邊個山最啱放乜（例如雪櫃屬水、電器屬火，要配合該山星曜五行）。
+- 若房間跨幾個山，要比較嗰幾個山嘅星曜吉凶五行同佔比，話邊個山最啱放乜（例如雪櫃屬水、電器屬火，要配合該山星曜五行）；佔比大嘅山影響最大。
+- 流年飛星嘅運用：本盤已附今年流年星。**按客人條問題決定使唔使流年**——客人問到時間性問題（今年運勢、邊年好、幾時應事、流年點樣、最近點樣）先重點加入流年飛星分析；一般佈局、顏色、材質、擺位、房間用途、化解催旺等問題，就以本命盤（山向運星）＋二十四天星為主，流年只輕輕帶過或唔提，唔好吓吓都講流年。
 - 不要列「1.2.3.」報告式分點；像對話一樣自然分段，可用「- 」列重點。
 - 若客人問題同呢間屋嘅風水無關，親切回應並引導返正題。`;
 }
@@ -466,9 +468,10 @@ ${lines}
 // indoor payload: { sit, face, period, flowYear, rooms[] }
 function indoorLayoutPrompt(d) {
   const roomLines = (d.rooms || []).map((r) => {
+    const pctStr = (r.byMountain || []).length ? `；各山佔比 ${r.byMountain.map((m) => `${m.mountain}${m.pct != null ? Math.round(m.pct) + '%' : ''}`).join('・')}` : '';
     const ps = (r.palaces || []).map((p) => `${p.palaceName}宮（${p.dir}）：山${p.shan} 向${p.xiang}${p.flow ? ` 流年${p.flow}` : ''}「${p.combo}」${p.ji}${p.remedy ? `（傳統化解：${p.remedy}）` : ''}${p.star ? `；天星「${p.star}」（${p.starJi}${p.starGoverns ? `，${p.starGoverns}` : ''}）` : ''}`).join('；');
     const furn = (r.furniture || []).length ? `；家具：${r.furniture.join('、')}` : '';
-    return `◆ ${r.type}（${(r.mountains || []).join('、')}山）${furn}\n  ${ps}`;
+    return `◆ ${r.type}（${(r.mountains || []).join('、')}山${pctStr}）${furn}\n  ${ps}`;
   }).join('\n');
   const starNote = d.starFace ? `\n注意：二十四天星唔跟羅盤坐向，而係跟「日照最強方向」（納光口）起盤——天星向首喺 ${d.starFace}（${d.starFaceDeg}°），天星坐山 ${d.starSit}；排盤法：${d.method === 'bazhai' ? '八宅遊年' : '玄道'}。` : '';
   return `以下是一個陽宅的玄空飛星盤（${d.sit}山${d.face}向，${d.period}運${d.flowYear ? `，${d.flowYear}年流年` : ''}），以及用家在平面圖上標注的實際房間佈局（每間房列出所跨宮位的山向星、星曜組合吉凶、傳統化解與天星）：${starNote}

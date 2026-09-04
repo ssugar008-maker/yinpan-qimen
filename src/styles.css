@@ -1433,6 +1433,13 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .indoor-area-done { background: #16a34a !important; border-color: #16a34a !important; color: #fff !important; }
 .indoor-area-cancel { color: #c62828 !important; }
 .indoor-room-mtn { font-size: 11px; font-weight: 800; color: var(--accent); margin-bottom: 2px; }
+/* 房間各山佔比＋手動指定山 */
+.indoor-room-pct { margin-top: 4px; font-size: 11px; font-weight: 700; color: #6a5a3f; background: #f4efe3; border-radius: 6px; padding: 3px 8px; line-height: 1.5; }
+.indoor-room-mtn-btn { border: 1px solid #cbb98f; background: #fff; color: #5a4a2f; border-radius: 6px; font-size: 11px; font-weight: 700; padding: 2px 7px; cursor: pointer; flex: none; }
+.indoor-room-mtn-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.indoor-mtn-picker { margin-top: 6px; background: #faf7f1; border: 1px solid #e0d6c2; border-radius: 8px; padding: 7px 9px; }
+.indoor-mtn-picker-head { font-size: 11px; font-weight: 700; color: #8a7a5a; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.indoor-mtn-picker-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .indoor-room-furn { margin-top: 6px; display: flex; gap: 6px; align-items: flex-start; }
 .indoor-room-furn-label { font-size: 11px; font-weight: 700; color: #8a7a5a; flex: none; padding-top: 3px; }
 .indoor-room-furn-chips { display: flex; flex-wrap: wrap; gap: 4px; }

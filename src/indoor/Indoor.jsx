@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import {
-  MOUNTAINS24, TRIGRAMS8, mountainAt, norm360, screenAngle, polar, resolveCenter, coveredMountains,
+  MOUNTAINS24, TRIGRAMS8, mountainAt, norm360, screenAngle, polar, resolveCenter, coveredMountains, coveredMountainsDetailed,
 } from './geometry.js';
 import { analyzeFloorplan } from './analyze.js';
 import { star24MapBy, analyze24, STAR24_INFO, PALACE_MOUNTAINS24, STAR24_METHODS, setStar24Method } from '../tianxing/stars24.js';
@@ -119,6 +119,7 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   const [selRoom, setSelRoom] = useState(null);
   const [roomSubMode, setRoomSubMode] = useState('point'); // 標房：point 單點 / area 區域
   const [areaDraft, setAreaDraft] = useState([]); // 區域描點中
+  const [mtnPickerIdx, setMtnPickerIdx] = useState(null); // 邊間房開緊「手動指定山」picker
   // 天星向首（日照最強方向）：starFaceDeg＝光位度數；sunMode＝☀ 點光位模式
   const [starFaceDeg, setStarFaceDeg] = useState(saved?.starFaceDeg ?? null);
   const [sunMode, setSunMode] = useState(false);
@@ -306,12 +307,20 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     if (!center) return null;
     return mountainAt(norm360(screenAngle(center, pt) - rot)).c;
   }, [center, rot]);
-  // 房間（單點或區域）→ 涵蓋的山列表的資訊
-  const roomAnalysis = useCallback((room) => {
+  // 房間 → 涵蓋的山＋各山佔比（面積加權）。若用家手動指定咗山（manualMountains）就用佢。
+  const roomMountainDetail = useCallback((room) => {
     if (!center) return [];
+    if (Array.isArray(room.manualMountains) && room.manualMountains.length) {
+      const n = room.manualMountains.length;
+      return room.manualMountains.map((mc) => ({ mountain: mc, pct: Math.round((1000 / n) / 10), manual: true }));
+    }
     const pts = room.pts && room.pts.length ? room.pts : [{ x: room.x, y: room.y }];
-    return coveredMountains(pts, center, rot).map(mountainInfo);
-  }, [center, rot, mountainInfo]);
+    return coveredMountainsDetailed(pts, center, rot);
+  }, [center, rot]);
+  // 房間（單點或區域）→ 涵蓋的山列表的資訊（連佔比）
+  const roomAnalysis = useCallback((room) => {
+    return roomMountainDetail(room).map((d) => ({ ...mountainInfo(d.mountain), pct: d.pct, manual: !!d.manual }));
+  }, [roomMountainDetail, mountainInfo]);
   // 房間主吉凶（取最凶者）
   const roomJi = (infos) => {
     if (!infos.length) return null;
@@ -693,8 +702,41 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
                     </select>
                     <span className="indoor-room-pal">{isArea ? `區域・跨 ${infos.length} 山` : (infos[0] ? `${infos[0].palaceName}宮・${infos[0].dir}・${infos[0].mountain}山` : '')}</span>
                     <span className="indoor-room-ji" style={{ background: col }}>{ji || '—'}</span>
+                    <button type="button" className={`indoor-room-mtn-btn${(r.manualMountains && r.manualMountains.length) ? ' on' : ''}`} title="手動指定呢間房喺邊啲山"
+                      onClick={(e) => { e.stopPropagation(); setMtnPickerIdx(mtnPickerIdx === i ? null : i); }}>✋山</button>
                     <button type="button" className="indoor-room-del" onClick={(e) => { e.stopPropagation(); setRooms((rs) => rs.filter((_, j) => j !== i)); setSelRoom(null); }}>✕</button>
                   </div>
+                  {/* 各山佔比（面積加權）；手動指定就平均 */}
+                  {infos.length > 0 && (
+                    <div className="indoor-room-pct">
+                      佔比：{infos.map((info) => `${info.mountain}${Math.round(info.pct)}%`).join('　')}{infos[0] && infos[0].manual ? '（手動平均）' : ''}
+                    </div>
+                  )}
+                  {/* 手動指定山 picker（24 山 chips） */}
+                  {mtnPickerIdx === i && (
+                    <div className="indoor-mtn-picker" onClick={(e) => e.stopPropagation()}>
+                      <div className="indoor-mtn-picker-head">
+                        揀呢間房喺邊啲山（可多揀）：
+                        {(r.manualMountains && r.manualMountains.length) > 0 && (
+                          <button type="button" className="indoor-area-cancel" onClick={() => setRooms((rs) => rs.map((x, j) => (j === i ? { ...x, manualMountains: [] } : x)))}>清除（用返自動）</button>
+                        )}
+                      </div>
+                      <div className="indoor-mtn-picker-chips">
+                        {MOUNTAINS24.map((m) => {
+                          const on = (r.manualMountains || []).includes(m.c);
+                          return (
+                            <button key={m.c} type="button" className={`furn-chip${on ? ' on' : ''}`}
+                              onClick={() => setRooms((rs) => rs.map((x, j) => {
+                                if (j !== i) return x;
+                                const cur = x.manualMountains || [];
+                                const next = on ? cur.filter((y) => y !== m.c) : [...cur, m.c].sort((a, b) => MOUNTAINS24.findIndex((z) => z.c === a) - MOUNTAINS24.findIndex((z) => z.c === b));
+                                return { ...x, manualMountains: next };
+                              }))}>{m.c}</button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {infos.map((info, k) => {
                     const adv = roomAdvice(info, r.type);
                     return (
