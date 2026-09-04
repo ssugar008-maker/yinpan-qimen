@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { STAR24_INFO, star24Map, analyze24 } from './stars24.js';
+import { STAR24_INFO, star24MapBy, analyze24, STAR24_METHODS, setStar24Method } from './stars24.js';
+import { useStar24Method } from './useStar24Method.js';
 import StarRing from './StarRing.jsx';
 import { useCloudStore } from '../cloud.js';
 import { aiInterpret } from '../ai.js';
@@ -11,8 +12,9 @@ const S24_THEMES = ['整體佈局', '財運', '感情桃花', '健康', '事業�
 
 // 二十四天星：天星環＋自動分析＋AI 分析。給坐山/向首即可（嵌入玄空飛星）。
 export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
-  const map = useMemo(() => star24Map(sitM), [sitM]);
-  const ana = useMemo(() => analyze24(sitM, faceM), [sitM, faceM]);
+  const method = useStar24Method(); // 排盤法：玄道（講堂）／八宅遊年
+  const map = useMemo(() => star24MapBy(method, sitM), [method, sitM]);
+  const ana = useMemo(() => analyze24(sitM, faceM, method), [sitM, faceM, method]);
   const sitInfo = STAR24_INFO[ana.sitStar], faceInfo = STAR24_INFO[ana.faceStar];
 
   // ── AI 天星分析（主題 × 追問，雲端存檔）──
@@ -27,6 +29,7 @@ export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
 
   const s24Payload = {
     task: 'star24',
+    method,
     chart: {
       sit: sitM, face: faceM, sitStar: ana.sitStar, faceStar: ana.faceStar,
       stars: ana.rows.map((r) => ({
@@ -48,6 +51,17 @@ export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
 
   return (
     <>
+      {/* 排盤法選擇：玄道（講堂甲乙兩盤）／八宅遊年（每坐山一盤） */}
+      <div className="ai-theme-row" style={{ marginBottom: 8 }}>
+        <span className="ai-theme-label">排盤法</span>
+        <div className="ai-theme-chips">
+          {STAR24_METHODS.map((m) => (
+            <button key={m.id} type="button" className={`ai-theme-chip${method === m.id ? ' active' : ''}`}
+              title={m.id === 'xuandao' ? '講堂立極尺版本：甲乙兩盤' : '傳統八宅遊年：坐山起伏位，每個坐山出一個唔同嘅盤'}
+              onClick={() => setStar24Method(m.id)}>{m.label}</button>
+          ))}
+        </div>
+      </div>
       {/* 天星環 */}
       <div className="tx-ring-wrap">
         <StarRing map={map} sitM={sitM} faceM={faceM} size={ringSize} />

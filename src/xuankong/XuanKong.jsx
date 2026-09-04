@@ -12,7 +12,8 @@ import AiText from '../AiText.jsx';
 import TianXingAnalysis from '../tianxing/TianXingAnalysis.jsx';
 import IndoorQuickView from '../indoor/IndoorQuickView.jsx';
 import ExportDialog from '../ExportDialog.jsx';
-import { star24Map, STAR24_INFO, PALACE_MOUNTAINS24, analyze24 } from '../tianxing/stars24.js';
+import { star24MapBy, STAR24_INFO, PALACE_MOUNTAINS24, analyze24 } from '../tianxing/stars24.js';
+import { useStar24Method } from '../tianxing/useStar24Method.js';
 import { loadIndoorLayout, buildIndoorRooms } from '../indoor/layoutData.js';
 
 // AI 分析主題（與 api/interpret.js 的 XK_THEMES 對應；「綜合」＝原有整體解讀，「自訂」＝自由提問）
@@ -128,8 +129,9 @@ export default function XuanKong({ chartLib }) {
   const bz = useMemo(() => bazhai(gua), [gua]);
 
   // 24 天星盤（依坐山起盤），並整理出每宮三山的天星
-  const starMap = useMemo(() => star24Map(sitM), [sitM]);
-  const s24 = useMemo(() => analyze24(sitM, faceM), [sitM, faceM]);
+  const star24Method = useStar24Method(); // 天星排盤法（玄道／八宅遊年），全域共用
+  const starMap = useMemo(() => star24MapBy(star24Method, sitM), [star24Method, sitM]);
+  const s24 = useMemo(() => analyze24(sitM, faceM, star24Method), [sitM, faceM, star24Method]);
   const palaceStars24 = useMemo(() => {
     const out = {};
     GRID.forEach((p) => {
@@ -243,7 +245,7 @@ export default function XuanKong({ chartLib }) {
     system: aiSystem,
     door: doorInfo,
     bazhai: { gua, guaName: GUA_NAME[gua], east4: EAST4.includes(gua), dirs: bazhaiDirs },
-    star24: { sit: sitM, face: faceM, sitStar: s24.sitStar, faceStar: s24.faceStar, stars: s24.rows.map((r) => ({ mountain: r.mountain, dir: r.dir, palace: r.palace, palaceWx: r.palaceWx, star: r.star, ji: r.ji, wx: r.wx, group: r.group, governs: r.governs })) },
+    star24: { sit: sitM, face: faceM, method: star24Method, sitStar: s24.sitStar, faceStar: s24.faceStar, stars: s24.rows.map((r) => ({ mountain: r.mountain, dir: r.dir, palace: r.palace, palaceWx: r.palaceWx, star: r.star, ji: r.ji, wx: r.wx, group: r.group, governs: r.governs })) },
     indoor: indoorPayload,
   };
   const runXkAi = async () => {

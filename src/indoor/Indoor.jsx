@@ -3,7 +3,8 @@ import {
   MOUNTAINS24, TRIGRAMS8, mountainAt, norm360, screenAngle, polar, resolveCenter, coveredMountains,
 } from './geometry.js';
 import { analyzeFloorplan } from './analyze.js';
-import { star24Map, STAR24_INFO, PALACE_MOUNTAINS24 } from '../tianxing/stars24.js';
+import { star24MapBy, STAR24_INFO, PALACE_MOUNTAINS24, STAR24_METHODS, setStar24Method } from '../tianxing/stars24.js';
+import { useStar24Method } from '../tianxing/useStar24Method.js';
 import { xuanKongChart, annualChart, starPair, PALACE_GUA, PALACE_DIR, PALACE_WX } from '../xuankong/engine.js';
 import { buildIndoorRooms } from './layoutData.js';
 
@@ -117,9 +118,8 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   const [selRoom, setSelRoom] = useState(null);
   const [roomSubMode, setRoomSubMode] = useState('point'); // 標房：point 單點 / area 區域
   const [areaDraft, setAreaDraft] = useState([]); // 區域描點中
-  // 天星向首（日照最強方向）：starFaceDeg＝光位度數；starRingRot＝天星環微調；sunMode＝☀ 點光位模式
+  // 天星向首（日照最強方向）：starFaceDeg＝光位度數；sunMode＝☀ 點光位模式
   const [starFaceDeg, setStarFaceDeg] = useState(saved?.starFaceDeg ?? null);
-  const [starRingRot, setStarRingRot] = useState(saved?.starRingRot ?? 0);
   const [sunMode, setSunMode] = useState(false);
 
   const svgRef = useRef(null);
@@ -139,10 +139,10 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
       const obj = raw ? JSON.parse(raw) : {};
       localStorage.setItem(STORE_KEY, JSON.stringify({
         ...obj, img, pins, centerMethod, manualCenter, refLine, refDegree, rot, decl,
-        showCompass, opacity, compassSize, layers, rooms, starFaceDeg, starRingRot,
+        showCompass, opacity, compassSize, layers, rooms, starFaceDeg,
       }));
     } catch {}
-  }, [img, pins, centerMethod, manualCenter, refLine, refDegree, rot, decl, showCompass, opacity, compassSize, layers, rooms, starFaceDeg, starRingRot]);
+  }, [img, pins, centerMethod, manualCenter, refLine, refDegree, rot, decl, showCompass, opacity, compassSize, layers, rooms, starFaceDeg]);
 
   // centre resolution: pins (>=3) win, otherwise fall back to image auto-detection
   const center = useMemo(() => {
@@ -277,9 +277,10 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   const faceM = facingDeg != null ? mountainAt(facingDeg) : null;
   const sitM = sittingDeg != null ? mountainAt(sittingDeg) : null;
   // 24 天星盤：天星隨「日照最強方向」（納光口）取向，唔係跟羅盤向首。天星坐山＝天星向首之對山。
+  const star24Method = useStar24Method(); // 排盤法：玄道（講堂）／八宅遊年
   const starSitC = starFaceDeg != null ? mountainAt(norm360(starFaceDeg + 180)).c : (sitM ? sitM.c : null);
   const starFaceC = starFaceDeg != null ? mountainAt(norm360(starFaceDeg)).c : (faceM ? faceM.c : null);
-  const star24 = starSitC ? star24Map(starSitC) : null;
+  const star24 = starSitC ? star24MapBy(star24Method, starSitC) : null;
   // 設咗天星向首自動顯示天星環
   useEffect(() => { if (starFaceDeg != null) setLayers((s) => (s.stars24 ? s : { ...s, stars24: true })); }, [starFaceDeg]);
   // 玄空盤（9運）＋流年，用於房間吉凶
@@ -326,8 +327,8 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   const indoorAiKey = sitM ? `${sitM.c}${faceM.c}|${rooms.length}` : '';
   const indoorEntry = (v) => (typeof v === 'string' ? { text: v, thread: [] } : (v || null));
   useEffect(() => { setLayoutAi({ loading: false, text: (indoorEntry(indoorAiLib[indoorAiKey]) || {}).text || '', error: '' }); }, [indoorAiKey, indoorAiLib]);
-  const indoorRoomsForAi = useMemo(() => (sitM && xkChart && center ? buildIndoorRooms({ sitM: sitM.c, starSit: starSitC, center, rot, rooms }, xkChart, xkFlow) : []), [sitM, xkChart, xkFlow, center, rot, rooms, starSitC]);
-  const indoorPayload = sitM ? { task: 'indoorLayout', indoor: { sit: sitM.c, face: faceM.c, period: 9, flowYear: flowYearNow, starFace: starFaceC, starFaceDeg, starSit: starSitC, rooms: indoorRoomsForAi } } : null;
+  const indoorRoomsForAi = useMemo(() => (sitM && xkChart && center ? buildIndoorRooms({ sitM: sitM.c, starSit: starSitC, method: star24Method, center, rot, rooms }, xkChart, xkFlow) : []), [sitM, xkChart, xkFlow, center, rot, rooms, starSitC, star24Method]);
+  const indoorPayload = sitM ? { task: 'indoorLayout', indoor: { sit: sitM.c, face: faceM.c, period: 9, flowYear: flowYearNow, starFace: starFaceC, starFaceDeg, starSit: starSitC, method: star24Method, rooms: indoorRoomsForAi } } : null;
   const runLayoutAi = async () => {
     setLayoutAi({ loading: true, text: '', error: '' });
     try {
@@ -443,7 +444,7 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
               {showCompass && (
                 <CompassOverlay center={center} rot={rot} facingDeg={facingDeg} layers={layers}
                   unit={unit} Rout={Rout} Rline={Rline} mtFont={mtFont} tgFont={tgFont} star24={star24} opacity={opacity}
-                  star24Rot={starRingRot} starFaceDeg={starFaceDeg} />
+                  starFaceDeg={starFaceDeg} />
               )}
 
               {/* A→B reference line (only while setting 坐向) */}
@@ -601,18 +602,21 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
                 <input type="number" inputMode="decimal" min="0" max="359.9" step="0.1" value={starFaceDeg ?? ''}
                   onChange={(e) => setStarFaceDeg(e.target.value === '' ? null : norm360(parseFloat(e.target.value) || 0))} placeholder="日照最強°" />
                 <button type="button" className={`indoor-apply${sunMode ? ' sun-on' : ''}`} onClick={() => setSunMode((v) => !v)}>☀ 點光位</button>
-                {starFaceDeg != null && <button type="button" className="indoor-area-cancel" onClick={() => { setStarFaceDeg(null); setStarRingRot(0); }}>清除</button>}
+                {starFaceDeg != null && <button type="button" className="indoor-area-cancel" onClick={() => setStarFaceDeg(null)}>清除</button>}
               </div>
               {sunMode && <div className="indoor-method-hint">☀ 喺平面圖點一下日照最強嘅位置（如大窗／露台），中心指向該點即天星向首。</div>}
+              <div className="indoor-row">
+                <label>排盤法</label>
+                <div className="seg">
+                  {STAR24_METHODS.map((m) => (
+                    <button key={m.id} type="button" className={star24Method === m.id ? 'on' : ''}
+                      title={m.id === 'xuandao' ? '講堂立極尺版本：甲乙兩盤' : '傳統八宅遊年：坐山起伏位，每個坐山出一個唔同嘅盤'}
+                      onClick={() => setStar24Method(m.id)}>{m.label}</button>
+                  ))}
+                </div>
+              </div>
               {starFaceDeg != null && (
-                <>
-                  <div className="indoor-method-hint">天星向首 <b>{starFaceC}</b>（{starFaceDeg}°）・天星坐山 <b>{starSitC}</b>　— 天星盤依光向重排（唔跟羅盤坐向）。</div>
-                  <div className="indoor-row">
-                    <label>天星環微調</label>
-                    <input type="range" min="0" max="359.9" step="0.5" value={starRingRot} onChange={(e) => setStarRingRot(parseFloat(e.target.value))} style={{ flex: 1 }} />
-                    <input type="number" inputMode="decimal" step="0.5" value={Math.round(starRingRot * 10) / 10} onChange={(e) => setStarRingRot(norm360(parseFloat(e.target.value) || 0))} style={{ width: 64 }} />
-                  </div>
-                </>
+                <div className="indoor-method-hint">天星向首 <b>{starFaceC}</b>（{starFaceDeg}°）・天星坐山 <b>{starSitC}</b>　— 天星盤依光向重排，逐山對返羅盤（唔係旋轉個環）。</div>
               )}
             </div>
           </div>
