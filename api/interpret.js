@@ -572,7 +572,9 @@ export default async function handler(req, res) {
   if (task === 'readFloorplan') {
     const img = payload && payload.image;
     if (!img || typeof img !== 'string' || !img.startsWith('data:image')) { res.status(400).json({ error: '缺少平面圖資料' }); return; }
-    const visionModel = process.env.AI_VISION_MODEL || model;
+    // vision 模型：DeepSeek 端點預設用佢嘅視覺模型 deepseek-v4-flash-vision-exp（同一 API key／base）；
+    // 其他端點就用返主模型；可用 AI_VISION_MODEL 覆蓋。
+    const visionModel = process.env.AI_VISION_MODEL || (base.includes('deepseek') ? 'deepseek-v4-flash-vision-exp' : model);
     try {
       const vbody = {
         model: visionModel,
