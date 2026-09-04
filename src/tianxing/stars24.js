@@ -53,6 +53,50 @@ export function star24Map(sitMountain) {
   return map;
 }
 
+// ── 八宅遊年排法（傳統：坐山起伏位，大遊年配八宮，每宮三山配三小星）──
+// 每個坐山卦出一個唔同嘅盤（八宅真訣）。坐山卦 → 各宮遊年星。
+const PALACE_GUA24 = { 1: '坎', 2: '坤', 3: '震', 4: '巽', 6: '乾', 7: '兌', 8: '艮', 9: '離' };
+const ZHAI_YOUNIAN = {
+  乾: { 6: '伏位', 1: '六煞', 8: '天醫', 3: '五鬼', 4: '禍害', 9: '絕命', 2: '延年', 7: '生氣' },
+  坎: { 1: '伏位', 8: '五鬼', 3: '天醫', 4: '生氣', 9: '延年', 2: '絕命', 7: '禍害', 6: '六煞' },
+  艮: { 8: '伏位', 3: '六煞', 4: '絕命', 9: '禍害', 2: '生氣', 7: '延年', 6: '天醫', 1: '五鬼' },
+  震: { 3: '伏位', 4: '延年', 9: '生氣', 2: '禍害', 7: '絕命', 6: '五鬼', 1: '天醫', 8: '六煞' },
+  巽: { 4: '伏位', 9: '天醫', 2: '五鬼', 7: '六煞', 6: '禍害', 1: '生氣', 8: '絕命', 3: '延年' },
+  離: { 9: '伏位', 2: '六煞', 7: '五鬼', 6: '絕命', 1: '延年', 8: '禍害', 3: '生氣', 4: '天醫' },
+  坤: { 2: '伏位', 7: '天醫', 6: '延年', 1: '絕命', 8: '生氣', 3: '禍害', 4: '五鬼', 9: '六煞' },
+  兌: { 7: '伏位', 6: '生氣', 1: '禍害', 8: '延年', 3: '絕命', 4: '五鬼', 9: '六煞', 2: '天醫' },
+};
+// 每遊年星轄三小星（順時針配該宮三山）
+const GROUP_STARS24 = {
+  伏位: ['司祿', '輔翼', '進賢'], 生氣: ['文昌', '天樞', '天節'], 天醫: ['天田', '天璇', '天孫'], 延年: ['天錢', '開陽', '從官'],
+  絕命: ['天烽', '搖光', '屍氣'], 五鬼: ['貫索', '玉衡', '司怪'], 禍害: ['捲舌', '天機', '天賊'], 六煞: ['敗傷', '天權', '咸池'],
+};
+// 八宅遊年排盤：給坐山名，回傳 { 山名: 星名 }
+export function star24MapBazhai(sitMountain) {
+  const sitPalace = Object.keys(PALACE_MOUNTAINS24).find((p) => PALACE_MOUNTAINS24[p].includes(sitMountain));
+  const yn = ZHAI_YOUNIAN[PALACE_GUA24[sitPalace]];
+  const map = {};
+  Object.entries(PALACE_MOUNTAINS24).forEach(([p, ms]) => {
+    const group = GROUP_STARS24[yn[p]];
+    ms.forEach((m, i) => { map[m] = group[i]; });
+  });
+  return map;
+}
+
+// 排盤法：'xuandao'（玄道／講堂，甲乙兩盤）或 'bazhai'（八宅遊年，每坐山一盤）
+export const STAR24_METHODS = [
+  { id: 'xuandao', label: '玄道（講堂）' },
+  { id: 'bazhai', label: '八宅遊年' },
+];
+export function star24MapBy(method, sitMountain) {
+  return method === 'bazhai' ? star24MapBazhai(sitMountain) : star24Map(sitMountain);
+}
+
+// 排盤法全域設定（localStorage＋事件同步各分頁）
+const METHOD_KEY = 'mo_star24_method';
+export const getStar24Method = () => { try { const v = localStorage.getItem(METHOD_KEY); return v === 'bazhai' ? 'bazhai' : 'xuandao'; } catch { return 'xuandao'; } };
+export const setStar24Method = (m) => { try { localStorage.setItem(METHOD_KEY, m); } catch { } try { window.dispatchEvent(new Event('mo-star24-method')); } catch { } };
+
 // 各山中心度數（子=0，順時針每山 15°）
 export const mountainDeg24 = (m) => M24_ORDER.indexOf(m) * 15;
 
@@ -64,8 +108,8 @@ export const PALACE_WX24 = { 1: '水', 2: '土', 3: '木', 4: '木', 6: '金', 7
 // 自動分析：坐向星、各司其職方位、吉凶分佈、星宮五行生剋
 const SHENG24 = { 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' };
 const KE24 = { 木: '土', 土: '水', 水: '火', 火: '金', 金: '木' };
-export function analyze24(sitM, faceM) {
-  const map = star24Map(sitM);
+export function analyze24(sitM, faceM, method = 'xuandao') {
+  const map = star24MapBy(method, sitM);
   const palaceOf = (m) => Object.keys(PALACE_MOUNTAINS24).find((p) => PALACE_MOUNTAINS24[p].includes(m));
   const rows = M24_ORDER.map((m) => {
     const star = map[m];

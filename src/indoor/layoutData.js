@@ -1,7 +1,7 @@
 // 室內平面圖標注資料 → 供 AI 分析用（玄空分頁與室內分頁共用）
 // 讀取室內分頁已存嘅平面圖、立極點、坐向、房間標注，並對照指定玄空盤計算各房間嘅宮位組合。
 import { coveredMountains, mountainAt, norm360 } from './geometry.js';
-import { PALACE_MOUNTAINS24, STAR24_INFO, star24Map } from '../tianxing/stars24.js';
+import { PALACE_MOUNTAINS24, STAR24_INFO, star24MapBy, getStar24Method } from '../tianxing/stars24.js';
 import { starPair, PALACE_GUA, PALACE_DIR, PALACE_WX } from '../xuankong/engine.js';
 
 const STORE_KEY = 'mo_indoor_v1';
@@ -27,9 +27,10 @@ export function buildIndoorRooms(layout, xkChart, xkFlow) {
   if (!layout || !layout.center) return [];
   const center = layout.center;
   const rot = layout.rot || 0;
-  // 天星坐山：優先用日照取向（starSit），否則跟羅盤坐山
+  // 天星坐山：優先用日照取向（starSit），否則跟羅盤坐山；排盤法跟全域設定
   const starSit = layout.starSit || layout.sitM;
-  const star24 = starSit ? star24Map(starSit) : null;
+  const method = layout.method || getStar24Method();
+  const star24 = starSit ? star24MapBy(method, starSit) : null;
   return (layout.rooms || []).map((room) => {
     const pts = room.pts && room.pts.length ? room.pts : [{ x: room.x, y: room.y }];
     const mountains = coveredMountains(pts, center, rot);

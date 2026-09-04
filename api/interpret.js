@@ -197,7 +197,7 @@ function xkPrompt(c, scope, theme, custom, context, extras = {}) {
   let head = useXk ? xkHead(c, scope) : '';
   if (useS24 && star24 && Array.isArray(star24.stars) && star24.stars.length) {
     const s24lines = star24.stars.map((s) => `${s.mountain}山（${s.dir}・${s.palace}宮屬${s.palaceWx}）：${s.star}（${s.ji}${s.wx ? `・屬${s.wx}` : ''}・${s.group}組）— ${s.governs}`).join('\n');
-    head += `${head ? '\n\n' : ''}【二十四天星盤】（${star24.sit}山${star24.face}向；坐山星 ${star24.sitStar}、向首星 ${star24.faceStar}，吉星十二、凶星十二，各司其職）\n${s24lines}`;
+    head += `${head ? '\n\n' : ''}【二十四天星盤】（${star24.sit}山${star24.face}向・${star24.method === 'bazhai' ? '八宅遊年排法' : '玄道排法'}；坐山星 ${star24.sitStar}、向首星 ${star24.faceStar}，吉星十二、凶星十二，各司其職）\n${s24lines}`;
   }
 
   // 大門納氣 ＋ 八宅命卦
@@ -413,7 +413,10 @@ function star24Prompt(d, theme, custom) {
   const instr = theme === '自訂'
     ? `使用者的問題是：「${custom}」。請以二十四天星為據回答，扣住相關星位的方位與司職，具體可執行；若問題與此無關，直接說明並給最接近的判斷。整體 340 字內。`
     : (S24_THEMES[theme] || S24_THEMES['整體佈局']);
-  return `以下是陽宅「${d.sit}山${d.face}向」的二十四天星盤（玄道風水，二十四星配二十四山，吉星十二、凶星十二，各司其職）：
+  const methodNote = d.method === 'bazhai'
+    ? '八宅遊年排法（坐山起伏位，大遊年配八宮，每宮三山配三小星）'
+    : '玄道風水（講堂立極尺版本）';
+  return `以下是陽宅「${d.sit}山${d.face}向」的二十四天星盤（${methodNote}，二十四星配二十四山，吉星十二、凶星十二，各司其職）：
 坐山星：${d.sitStar}；向首星：${d.faceStar}。
 各山星位：
 ${lines}
@@ -429,7 +432,7 @@ function indoorLayoutPrompt(d) {
     const furn = (r.furniture || []).length ? `；家具：${r.furniture.join('、')}` : '';
     return `◆ ${r.type}（${(r.mountains || []).join('、')}山）${furn}\n  ${ps}`;
   }).join('\n');
-  const starNote = d.starFace ? `\n注意：二十四天星唔跟羅盤坐向，而係跟「日照最強方向」（納光口）起盤——天星向首喺 ${d.starFace}（${d.starFaceDeg}°），天星坐山 ${d.starSit}。` : '';
+  const starNote = d.starFace ? `\n注意：二十四天星唔跟羅盤坐向，而係跟「日照最強方向」（納光口）起盤——天星向首喺 ${d.starFace}（${d.starFaceDeg}°），天星坐山 ${d.starSit}；排盤法：${d.method === 'bazhai' ? '八宅遊年' : '玄道'}。` : '';
   return `以下是一個陽宅的玄空飛星盤（${d.sit}山${d.face}向，${d.period}運${d.flowYear ? `，${d.flowYear}年流年` : ''}），以及用家在平面圖上標注的實際房間佈局（每間房列出所跨宮位的山向星、星曜組合吉凶、傳統化解與天星）：${starNote}
 
 【各房間現狀】
@@ -529,7 +532,7 @@ export default async function handler(req, res) {
   } else if (task === 'star24') {
     if (!chart || !Array.isArray(chart.stars) || !chart.stars.length) { res.status(400).json({ error: '缺少二十四天星資料' }); return; }
     if (theme === '自訂' && !(custom && String(custom).trim())) { res.status(400).json({ error: '請輸入想問的問題' }); return; }
-    prompt = star24Prompt(chart, theme || '整體佈局', custom || '');
+    prompt = star24Prompt({ ...chart, method: (payload && payload.method) || chart.method }, theme || '整體佈局', custom || '');
   } else if (task === 'qimenAsk') {
     if (!ask || !ask.qtype || !ask.chart) { res.status(400).json({ error: '缺少問事資料' }); return; }
     if (ask.qtype === '自訂' && !(ask.custom && String(ask.custom).trim())) { res.status(400).json({ error: '請輸入想問的問題' }); return; }
