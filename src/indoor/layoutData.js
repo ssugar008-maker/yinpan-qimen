@@ -27,7 +27,9 @@ export function buildIndoorRooms(layout, xkChart, xkFlow) {
   if (!layout || !layout.center) return [];
   const center = layout.center;
   const rot = layout.rot || 0;
-  const star24 = layout.sitM ? star24Map(layout.sitM) : null;
+  // 天星坐山：優先用日照取向（starSit），否則跟羅盤坐山
+  const starSit = layout.starSit || layout.sitM;
+  const star24 = starSit ? star24Map(starSit) : null;
   return (layout.rooms || []).map((room) => {
     const pts = room.pts && room.pts.length ? room.pts : [{ x: room.x, y: room.y }];
     const mountains = coveredMountains(pts, center, rot);
