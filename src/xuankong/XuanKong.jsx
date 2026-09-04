@@ -8,6 +8,7 @@ import {
 import { useCloudStore } from '../cloud.js';
 import { aiInterpret } from '../ai.js';
 import FollowUpChat from '../FollowUp.jsx';
+import FengshuiChat from '../FengshuiChat.jsx';
 import AiText from '../AiText.jsx';
 import TianXingAnalysis from '../tianxing/TianXingAnalysis.jsx';
 import IndoorQuickView from '../indoor/IndoorQuickView.jsx';
@@ -248,6 +249,22 @@ export default function XuanKong({ chartLib }) {
     star24: { sit: sitM, face: faceM, method: star24Method, sitStar: s24.sitStar, faceStar: s24.faceStar, stars: s24.rows.map((r) => ({ mountain: r.mountain, dir: r.dir, palace: r.palace, palaceWx: r.palaceWx, star: r.star, ji: r.ji, wx: r.wx, group: r.group, governs: r.governs })) },
     indoor: indoorPayload,
   };
+  // ── 風水 AI 顧問（直接對話）：玄空全盤＋二十四天星＋室內逐山（若有標注）──
+  const [chatStyle, setChatStyle] = useState('白話');
+  const [chatDetail, setChatDetail] = useState('適中');
+  const fsChatPayload = {
+    task: 'xkChat',
+    chart: chartPayload,
+    star24: xkBasePayload.star24,
+    indoor: indoorPayload,
+    chatStyle, chatDetail,
+  };
+  const FS_CHAT_KEY = 'fs_chat_xk_v1';
+  const [fsChatLib, setFsChatLib] = useCloudStore('xuankong', FS_CHAT_KEY, {});
+  const fsChatKey = `${sitM}${faceM}|${period}|${flowYear}|${star24Method}`;
+  const fsThread = (fsChatLib[fsChatKey] && fsChatLib[fsChatKey].thread) || [];
+  const fsAppend = (qa) => setFsChatLib((lib) => ({ ...lib, [fsChatKey]: { thread: [...((lib[fsChatKey] || {}).thread || []), qa], ts: Date.now() } }));
+  const fsClear = () => setFsChatLib((lib) => ({ ...lib, [fsChatKey]: { thread: [], ts: Date.now() } }));
   const runXkAi = async () => {
     setXkAi({ loading: true, text: '', error: '' });
     try {
@@ -504,6 +521,29 @@ export default function XuanKong({ chartLib }) {
             </div>
           )}
           <div className="sym-combo-note">（可先點上方九宮格任一宮，再選主題；主題涵蓋傢俬擺設、顏色、形狀材質、風水擺設、房間用途、財運、健康、感情桃花、事業文昌、化解催旺，或用「自訂」直接問。AI 會結合格局、山向星、五行生剋與流年作答）</div>
+
+          {/* 風水 AI 顧問（直接對話，唔使揀主題） */}
+          <div className="fschat-section">
+            <div className="xk-sec-head">💬 風水 AI 顧問（直接對話）</div>
+            <div className="xk-note" style={{ marginBottom: 6 }}>唔使揀主題，直接同顧問傾 —— 佢睇到玄空全盤、二十四天星（{star24Method === 'bazhai' ? '八宅遊年' : '玄道'}）{indoorPayload ? '，同你喺「室內」標注嘅房間（逐山）' : ''}。問顏色、材質、傢俬電器擺位、房間用途、化解催旺都得。</div>
+            <div className="ai-theme-row" style={{ marginBottom: 6 }}>
+              <span className="ai-theme-label">語氣</span>
+              <div className="ai-theme-chips">
+                {['白話', '書面'].map((s) => <button key={s} type="button" className={`ai-theme-chip${chatStyle === s ? ' active' : ''}`} onClick={() => setChatStyle(s)}>{s}</button>)}
+              </div>
+              <span className="ai-theme-label">詳略</span>
+              <div className="ai-theme-chips">
+                {['簡潔', '適中', '詳細'].map((s) => <button key={s} type="button" className={`ai-theme-chip${chatDetail === s ? ' active' : ''}`} onClick={() => setChatDetail(s)}>{s}</button>)}
+              </div>
+            </div>
+            <FengshuiChat
+              basePayload={fsChatPayload}
+              thread={fsThread}
+              onAppend={fsAppend}
+              onClear={fsClear}
+              examples={['呢個坐向整體用咩色系好？', '邊個方位做廚房最好？', '主人房床頭宜向邊個方向？', '點樣催旺財位？']}
+            />
+          </div>
         </div>
       </div>
       </div>{/* /xk-workspace */}

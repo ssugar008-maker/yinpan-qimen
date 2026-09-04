@@ -51,6 +51,56 @@ ok('各司其職 8 項', st && st.duties === 8, st && st.duties);
 ok('凶位警示含屍氣大凶在申山【坎宅絕命在坤】', st && st.warns.some((w) => w.includes('屍氣') && w.includes('大凶') && w.includes('申山')), st && st.warns[0]);
 ok('星宮生剋 16 行', st && st.rels === 16, st && st.rels);
 
+console.log('\n[1b] 天星坐向獨立設定（坐山 dropdown ＋ 向首角度輸入）');
+// 坐山 dropdown：揀「坐辛山向乙」（八宅遊年兌宅：辛＝進賢伏位、乙＝屍氣絕命）
+await page.evaluate(() => {
+  const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
+  const sel = det.querySelector('.tx-sit-select');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+  setter.call(sel, '辛'); sel.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await sleep(400);
+let stO = await page.evaluate(() => {
+  const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
+  return { cards: [...det.querySelectorAll('.tx-sum-card')].map((c) => c.innerText.replace(/\s+/g, ' ')) };
+});
+ok('坐山 dropdown：坐辛山向乙 → 坐辛進賢（伏位）／向乙屍氣（絕命）', stO.cards.some((c) => c.includes('辛') && c.includes('進賢')) && stO.cards.some((c) => c.includes('乙') && c.includes('屍氣')), stO.cards);
+// 跟返玄空
+await page.evaluate(() => {
+  const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
+  [...det.querySelectorAll('button')].find((b) => b.textContent.includes('跟返玄空'))?.click();
+});
+await sleep(300);
+stO = await page.evaluate(() => {
+  const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
+  return { cards: [...det.querySelectorAll('.tx-sum-card')].map((c) => c.innerText.replace(/\s+/g, ' ')) };
+});
+ok('跟返玄空 → 返回坐子向午（坐子輔翼）', stO.cards.some((c) => c.includes('子山') && c.includes('輔翼')), stO.cards);
+// 向首角度輸入：105°（乙）→ 坐辛
+await page.evaluate(() => {
+  const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
+  const inp = det.querySelector('.tx-deg-input');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(inp, '105'); inp.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await sleep(150);
+await page.evaluate(() => {
+  const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
+  [...det.querySelectorAll('button')].find((b) => b.textContent.trim() === '排盤')?.click();
+});
+await sleep(400);
+stO = await page.evaluate(() => {
+  const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
+  return { cards: [...det.querySelectorAll('.tx-sum-card')].map((c) => c.innerText.replace(/\s+/g, ' ')) };
+});
+ok('向首角度 105° → 坐辛山向乙（向乙屍氣）', stO.cards.some((c) => c.includes('乙') && c.includes('屍氣')), stO.cards);
+// 還原
+await page.evaluate(() => {
+  const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
+  [...det.querySelectorAll('button')].find((b) => b.textContent.includes('跟返玄空'))?.click();
+});
+await sleep(300);
+
 console.log('\n[2] 換坐山（午）→ 天星盤同步（共用坐向）');
 await page.evaluate(() => {
   const sel = [...document.querySelectorAll('select')].find((s) => [...s.options].some((o) => o.textContent.includes('午山')));
@@ -112,6 +162,26 @@ st = await page.evaluate(() => {
 });
 ok('追問回答顯示', st.a && st.a.includes('天星回答2'), st.a);
 ok('對話串存檔', Object.values(st.lib).some((v) => v && Array.isArray(v.thread) && v.thread.length === 1 && v.thread[0].q === '大門開坤方好嗎'), Object.keys(st.lib));
+
+console.log('\n[3c] 玄空分頁：風水 AI 顧問（直接對話）');
+const xkChat0 = await page.evaluate(() => {
+  const sec = document.querySelector('.fschat-section');
+  if (!sec) return null;
+  const ta = sec.querySelector('.fschat-input');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+  setter.call(ta, '呢個坐向整體用咩色系好？'); ta.dispatchEvent(new Event('input', { bubbles: true }));
+  return { examples: sec.querySelectorAll('.fschat-ex-chip').length };
+});
+ok('玄空分頁有風水 AI 顧問（含示例問題）', !!xkChat0 && xkChat0.examples >= 3, xkChat0);
+await page.evaluate(() => [...document.querySelectorAll('.fschat-section button')].find((b) => b.textContent.trim() === '送出')?.click());
+await sleep(500);
+const xkChatSt = await page.evaluate(() => ({
+  user: document.querySelectorAll('.fschat-section .qc-msg.user').length,
+  ai: document.querySelectorAll('.fschat-section .qc-msg.ai').length,
+  aiText: document.querySelector('.fschat-section .qc-msg.ai .qc-bubble')?.innerText || '',
+}));
+ok('玄空顧問：送出 → 一問一答', xkChatSt.user === 1 && xkChatSt.ai === 1, xkChatSt);
+ok('玄空顧問：AI 回答顯示（mock）', xkChatSt.aiText.includes('天星回答'), xkChatSt.aiText.slice(0, 50));
 
 console.log('\n[4] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
