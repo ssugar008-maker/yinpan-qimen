@@ -241,12 +241,12 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     const d = drag.current;
     if (d.idx != null) {
       if (!d.moved) setSelectedPin((s) => (s === d.idx ? null : d.idx));
-    } else if (mode === 'pin' && d.downPt && !d.moved) {
-      setPins((ps) => { const np = [...ps, pt]; setSelectedPin(np.length - 1); return np; });
     } else if (sunMode && d.downPt && !d.moved && center) {
-      // ☀ 點光位：由中心指向所點位置嘅方向＝日照最強方向（天星向首）
+      // ☀ 點光位優先（唔會再落加點／標房標記）：由中心指向所點位置嘅方向＝日照最強方向（天星向首）
       setStarFaceDeg(Math.round(norm360(screenAngle(center, pt) - rot) * 10) / 10);
       setSunMode(false);
+    } else if (mode === 'pin' && d.downPt && !d.moved) {
+      setPins((ps) => { const np = [...ps, pt]; setSelectedPin(np.length - 1); return np; });
     } else if (mode === 'room' && d.downPt && !d.moved) {
       if (roomSubMode === 'area') {
         // 區域模式：逐點描房間範圍

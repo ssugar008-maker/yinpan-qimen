@@ -225,6 +225,20 @@ ok('對話存檔（localStorage，兩條）', Object.values(chatSt.saved).some((
 ok('xkChat payload 有玄空盤＋天星＋室內逐山', !!(lastChat && lastChat.task === 'xkChat' && Array.isArray(lastChat.chart?.palaces) && lastChat.chart.palaces.length === 9 && Array.isArray(lastChat.star24?.stars) && lastChat.star24.stars.length === 24 && Array.isArray(lastChat.indoor?.rooms) && lastChat.indoor.rooms[0]?.byMountain?.length > 0), lastChat && { task: lastChat.task, palaces: lastChat.chart?.palaces?.length, stars: lastChat.star24?.stars?.length, rooms: lastChat.indoor?.rooms?.length, byMtn: lastChat.indoor?.rooms?.[0]?.byMountain?.length });
 ok('xkChat 多輪帶 followups', !!(lastChat && Array.isArray(lastChat.followups) && lastChat.followups.length === 1 && lastChat.question === '雪櫃放邊個山好？'), lastChat && { q: lastChat.question, fu: lastChat.followups?.length });
 
+console.log('\n[4d] ☀點光位唔會再落加點（重疊修正）');
+const pinsBefore = await page.evaluate(() => document.querySelectorAll('.indoor-canvas-wrap svg circle[fill="#ff8800"]').length);
+await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('點光位')).click()); // 開 ☀（仲喺 pin 模式）
+await sleep(150);
+const box2 = await page.evaluate(() => { const r = document.querySelector('.indoor-canvas-wrap svg').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+await page.mouse.click(box2.x + box2.w * 0.5 + box2.w * 0.3, box2.y + box2.h * 0.5); // 點中心正東
+await sleep(300);
+const after = await page.evaluate(() => ({
+  pins: document.querySelectorAll('.indoor-canvas-wrap svg circle[fill="#ff8800"]').length,
+  starFace: document.querySelector('.indoor-starface input[type=number]')?.value,
+}));
+ok('☀點光位：設到天星向首（≈90°）', after.starFace !== '' && Math.abs(parseFloat(after.starFace) - 90) < 8, after.starFace);
+ok('☀點光位：唔會落加點（重疊修正）', after.pins === pinsBefore, { before: pinsBefore, after: after.pins });
+
 console.log('\n[5] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
 
