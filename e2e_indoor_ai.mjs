@@ -35,6 +35,10 @@ page.on('request', (req) => {
     if (b.task === 'indoorLayout') lastIndoor = b;
     if (b.task === 'xkChat') lastChat = b;
     if (b.task === 'xkOverall' || b.task === 'xkPalace') lastXk = b;
+    if (b.task === 'readFloorplan') {
+      req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ json: { rooms: [{ type: '廚房', cx: 0.7, cy: 0.3, x1: 0.6, y1: 0.2, x2: 0.8, y2: 0.4 }, { type: '廁所', cx: 0.2, cy: 0.7, x1: 0.15, y1: 0.65, x2: 0.25, y2: 0.75 }] }, model: 'test-vision', usage: { pt: 500, ct: 80 } }) });
+      return;
+    }
     req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ text: '【佈局分析】主人房喺坎宮得地…', model: 'deepseek-v4-flash', usage: { pt: 100, ct: 50 } }) });
   } else if (req.url().includes('/api/library')) {
     req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
@@ -270,6 +274,52 @@ await page.evaluate(() => {
 await sleep(200);
 pctTxt = await page.evaluate(() => document.querySelector('.indoor-room .indoor-room-pct')?.innerText || '');
 ok('清除手動 → 用返自動（子 100%）', pctTxt.includes('子') && pctTxt.includes('100%'), pctTxt);
+
+console.log('\n[4g] 放大標房（zoom）');
+const zoom0 = await page.evaluate(() => ({ bar: !!document.querySelector('.indoor-zoom-bar'), scaleW: document.querySelector('.indoor-canvas-scale')?.style.width }));
+ok('放大控制列出現', zoom0.bar, zoom0);
+await page.evaluate(() => [...document.querySelectorAll('.indoor-zoom-btn')].find((b) => b.textContent.trim() === '＋').click());
+await sleep(200);
+const zoom1 = await page.evaluate(() => ({ scaleW: document.querySelector('.indoor-canvas-scale')?.style.width, val: document.querySelector('.indoor-zoom-val')?.textContent }));
+ok('撳＋ → 放大到 125%', zoom1.scaleW === '125%' && zoom1.val === '125%', zoom1);
+await page.evaluate(() => [...document.querySelectorAll('.indoor-zoom-btn')].find((b) => b.textContent.trim() === '重設')?.click());
+await sleep(150);
+
+console.log('\n[4h] 微調房間（拖成間房）');
+// 先切去「🏠 標房」模式（拖房只喺標房模式生效）
+await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('標房'))?.click());
+await sleep(200);
+// 拖第二間房（廚房，單點正南 500,900）向上郁 100px
+const roomPosBefore = await page.evaluate(() => JSON.parse(localStorage.getItem('mo_indoor_v1')).rooms.map((r) => (r.pts ? r.pts[0] : { x: r.x, y: r.y })));
+const roomPosAfter = await page.evaluate(async () => {
+  const svg = document.querySelector('.indoor-canvas-wrap svg');
+  const r = svg.getBoundingClientRect();
+  const toClient = (x, y) => { const pt = new DOMPoint(x, y); const ctm = svg.getScreenCTM(); const p = pt.matrixTransform(ctm); return { x: p.x, y: p.y }; };
+  const from = toClient(500, 900), to = toClient(500, 800);
+  const opts = { bubbles: true, pointerId: 1, isPrimary: true };
+  svg.dispatchEvent(new PointerEvent('pointerdown', { ...opts, clientX: from.x, clientY: from.y }));
+  svg.dispatchEvent(new PointerEvent('pointermove', { ...opts, clientX: to.x, clientY: to.y }));
+  svg.dispatchEvent(new PointerEvent('pointerup', { ...opts, clientX: to.x, clientY: to.y }));
+  await new Promise((r2) => setTimeout(r2, 100));
+  return JSON.parse(localStorage.getItem('mo_indoor_v1')).rooms.map((r2) => (r2.pts ? r2.pts[0] : { x: r2.x, y: r2.y }));
+});
+ok('拖房微調：廚房由 y≈900 移到 y≈800', roomPosAfter[1] && roomPosAfter[1].y < roomPosBefore[1].y - 50, { before: roomPosBefore[1], after: roomPosAfter[1] });
+
+console.log('\n[4i] AI 讀平面圖搵房間');
+await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('AI 讀平面圖'))?.click());
+await sleep(500);
+const fpReview = await page.evaluate(() => ({
+  review: !!document.querySelector('.indoor-fpai-review'),
+  rows: document.querySelectorAll('.indoor-fpai-row').length,
+  types: [...document.querySelectorAll('.indoor-fpai-row select')].map((s) => s.value),
+}));
+ok('AI 讀圖：review 出現＋搵到 2 個空間', fpReview.review && fpReview.rows === 2, fpReview);
+ok('AI 讀圖：類型正確（廚房、廁所）', fpReview.types.includes('廚房') && fpReview.types.includes('廁所'), fpReview.types);
+const roomsBeforeFp = await page.evaluate(() => document.querySelectorAll('.indoor-room').length);
+await page.evaluate(() => [...document.querySelectorAll('.indoor-fpai-actions button')].find((b) => b.textContent.includes('加入全部'))?.click());
+await sleep(400);
+const roomsAfterFp = await page.evaluate(() => document.querySelectorAll('.indoor-room').length);
+ok('確認加入 → 多咗 2 間房', roomsAfterFp === roomsBeforeFp + 2, { before: roomsBeforeFp, after: roomsAfterFp });
 
 console.log('\n[5] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
