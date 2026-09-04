@@ -13,6 +13,7 @@ import TianXingAnalysis from '../tianxing/TianXingAnalysis.jsx';
 import IndoorQuickView from '../indoor/IndoorQuickView.jsx';
 import ExportDialog from '../ExportDialog.jsx';
 import { star24Map, STAR24_INFO, PALACE_MOUNTAINS24, analyze24 } from '../tianxing/stars24.js';
+import { loadIndoorLayout, buildIndoorRooms } from '../indoor/layoutData.js';
 
 // AI 分析主題（與 api/interpret.js 的 XK_THEMES 對應；「綜合」＝原有整體解讀，「自訂」＝自由提問）
 const XK_AI_THEMES = ['綜合', '傢俬擺設', '顏色', '形狀材質', '風水擺設', '房間用途', '財運', '健康', '感情桃花', '事業文昌', '化解催旺', '自訂'];
@@ -225,6 +226,13 @@ export default function XuanKong({ chartLib }) {
     const sinfo = STAR24_INFO[star] || {};
     return { mountain: doorM, yang: dm.yang ? '陽' : '陰', palace: PALACE_GUA[dm.palace], dir: PALACE_DIR[dm.palace], star24: star, star24ji: sinfo.ji, star24governs: sinfo.governs };
   }, [doorM, starMap]);
+  // 室內佈局（用家喺「室內」分頁標注嘅房間）：坐向一致先送入 AI（唔一致會錯配星曜）
+  const indoorPayload = useMemo(() => {
+    const layout = loadIndoorLayout();
+    if (!layout || layout.sitM !== sitM) return null;
+    const rooms = buildIndoorRooms(layout, chart, flow);
+    return rooms.length ? { sit: sitM, face: faceM, period, flowYear, rooms } : null;
+  }, [sitM, faceM, period, flowYear, chart, flow]);
   const xkBasePayload = {
     task: isOverall ? 'xkOverall' : 'xkPalace',
     chart: chartPayload,
@@ -236,6 +244,7 @@ export default function XuanKong({ chartLib }) {
     door: doorInfo,
     bazhai: { gua, guaName: GUA_NAME[gua], east4: EAST4.includes(gua), dirs: bazhaiDirs },
     star24: { sit: sitM, face: faceM, sitStar: s24.sitStar, faceStar: s24.faceStar, stars: s24.rows.map((r) => ({ mountain: r.mountain, dir: r.dir, palace: r.palace, palaceWx: r.palaceWx, star: r.star, ji: r.ji, wx: r.wx, group: r.group, governs: r.governs })) },
+    indoor: indoorPayload,
   };
   const runXkAi = async () => {
     setXkAi({ loading: true, text: '', error: '' });
