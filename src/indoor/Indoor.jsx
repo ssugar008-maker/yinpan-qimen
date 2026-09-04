@@ -28,7 +28,7 @@ const CENTER_METHODS = [
   { v: 'manual', l: '👆 手動', hint: '直接在圖上點一下定中心' },
 ];
 
-const ROOM_TYPES = ['睡房', '主人房', '小孩房', '書房', '客廳', '廚房', '廁所', '大門', '神位', '通道', '其他'];
+const ROOM_TYPES = ['睡房', '主人房', '小孩房', '書房', '客廳', '飯廳', '廚房', '廁所', '浴室', '大門', '玄關', '神位', '露台', '走廊', '通道', '儲物房', '樓梯', '其他'];
 
 // 常用家具（五行）：標房時可一拼加入分析
 const COMMON_FURNITURE = [
@@ -123,6 +123,8 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   // 天星向首（日照最強方向）：starFaceDeg＝光位度數；sunMode＝☀ 點光位模式
   const [starFaceDeg, setStarFaceDeg] = useState(saved?.starFaceDeg ?? null);
   const [sunMode, setSunMode] = useState(false);
+  // 放大標房：zoom 倍數（1–4），canvas 變 scrollable
+  const [zoom, setZoom] = useState(1);
 
   const svgRef = useRef(null);
   const drag = useRef({ idx: null, downPt: null, moved: false });
@@ -200,15 +202,60 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     return best;
   };
 
+  // 點是否喺多邊形內（射線法）—— 微調房間用
+  const pointInPoly = (pt, pts) => {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const a = pts[i], b = pts[j];
+      if ((a.y > pt.y) !== (b.y > pt.y) && pt.x < ((b.x - a.x) * (pt.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    return inside;
+  };
+  // 搵到邊間房（區域房＝點喺多邊形內；單點房＝近個點）；由後往前（後畫嘅喺上）
+  const roomHit = (pt) => {
+    for (let i = rooms.length - 1; i >= 0; i--) {
+      const r = rooms[i];
+      if (r.pts && r.pts.length >= 2) { if (pointInPoly(pt, r.pts)) return i; }
+      else if (Math.hypot((r.x ?? 0) - pt.x, (r.y ?? 0) - pt.y) < HIT_R) return i;
+    }
+    return -1;
+  };
+  // 搵選中嘅區域房嘅最近頂點（微調用）
+  const nearestRoomVertex = (pt, roomIdx) => {
+    const r = rooms[roomIdx];
+    if (!r || !r.pts) return -1;
+    let best = -1, bestD = HIT_R * 1.2;
+    r.pts.forEach((p, k) => {
+      const d = Math.hypot(p.x - pt.x, p.y - pt.y);
+      if (d < bestD) { bestD = d; best = k; }
+    });
+    return best;
+  };
+
   const onPointerDown = (e) => {
     if (!img || mode === 'view') return;
     const pt = toSvg(e);
-    drag.current = { idx: null, downPt: pt, moved: false };
+    drag.current = { idx: null, downPt: pt, moved: false, roomIdx: null, vertexIdx: null, origPts: null, origXY: null };
     if (mode === 'pin') {
       const i = nearestPin(pt);
       if (i >= 0) {
         drag.current.idx = i;
         try { e.target.setPointerCapture(e.pointerId); } catch {}
+      }
+    } else if (mode === 'room' && roomSubMode === 'point') {
+      // 微調：揀中嘅區域房可拖頂點；點到房就拖成間（郁唔郁都喺 pointerup 先決定係咪選中）
+      const vi = selRoom != null ? nearestRoomVertex(pt, selRoom) : -1;
+      if (vi >= 0) {
+        drag.current.roomIdx = selRoom; drag.current.vertexIdx = vi;
+        try { e.target.setPointerCapture(e.pointerId); } catch {}
+      } else {
+        const ri = roomHit(pt);
+        if (ri >= 0) {
+          drag.current.roomIdx = ri;
+          drag.current.origPts = rooms[ri].pts ? rooms[ri].pts.map((p) => ({ ...p })) : null;
+          drag.current.origXY = rooms[ri].pts ? null : { x: rooms[ri].x, y: rooms[ri].y };
+          try { e.target.setPointerCapture(e.pointerId); } catch {}
+        }
       }
     } else if (mode === 'manual') {
       setManualCenter(pt);
@@ -231,6 +278,20 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     if (d.downPt && Math.hypot(pt.x - d.downPt.x, pt.y - d.downPt.y) > HIT_R * 0.4) d.moved = true;
     if (d.idx != null) {
       setPins((ps) => ps.map((p, i) => (i === d.idx ? pt : p)));
+    } else if (d.roomIdx != null) {
+      if (d.vertexIdx != null) {
+        // 微調：拖區域房嘅頂點
+        setRooms((rs) => rs.map((r, j) => (j === d.roomIdx && r.pts ? { ...r, pts: r.pts.map((p, k) => (k === d.vertexIdx ? { x: Math.round(pt.x), y: Math.round(pt.y) } : p)) } : r)));
+      } else {
+        // 微調：拖成間房（平移）
+        const dx = pt.x - d.downPt.x, dy = pt.y - d.downPt.y;
+        setRooms((rs) => rs.map((r, j) => {
+          if (j !== d.roomIdx) return r;
+          if (r.pts && d.origPts) return { ...r, pts: d.origPts.map((p) => ({ x: Math.round(p.x + dx), y: Math.round(p.y + dy) })) };
+          if (d.origXY) return { ...r, x: Math.round(d.origXY.x + dx), y: Math.round(d.origXY.y + dy) };
+          return r;
+        }));
+      }
     } else if (mode === 'ref' && refStart) {
       setRefLine((l) => (l ? { ...l, x2: pt.x, y2: pt.y } : l));
     }
@@ -248,21 +309,22 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
       setSunMode(false);
     } else if (mode === 'pin' && d.downPt && !d.moved) {
       setPins((ps) => { const np = [...ps, pt]; setSelectedPin(np.length - 1); return np; });
-    } else if (mode === 'room' && d.downPt && !d.moved) {
-      if (roomSubMode === 'area') {
-        // 區域模式：逐點描房間範圍
-        setAreaDraft((dr) => [...dr, { x: Math.round(pt.x), y: Math.round(pt.y) }]);
-      } else {
-        // 單點模式：若點到既有房間則選中，否則新增房間
-        const hit = rooms.findIndex((r) => Math.hypot((r.pts ? r.pts[0].x : r.x) - pt.x, (r.pts ? r.pts[0].y : r.y) - pt.y) < HIT_R);
-        if (hit >= 0) setSelRoom((s) => (s === hit ? null : hit));
-        else {
+    } else if (mode === 'room' && d.downPt) {
+      if (d.roomIdx != null) {
+        // 微調完（拖房／拖頂點）；冇郁就當係選中
+        if (!d.moved) setSelRoom((s) => (s === d.roomIdx ? null : d.roomIdx));
+      } else if (!d.moved) {
+        if (roomSubMode === 'area') {
+          // 區域模式：逐點描房間範圍
+          setAreaDraft((dr) => [...dr, { x: Math.round(pt.x), y: Math.round(pt.y) }]);
+        } else {
+          // 單點模式：點空白位新增房間（點到既有房會喺 pointerdown 設咗 roomIdx）
           setRooms((rs) => [...rs, { x: Math.round(pt.x), y: Math.round(pt.y), type: '睡房', furniture: [] }]);
           setSelRoom(rooms.length);
         }
       }
     }
-    drag.current = { idx: null, downPt: null, moved: false };
+    drag.current = { idx: null, downPt: null, moved: false, roomIdx: null, vertexIdx: null, origPts: null, origXY: null };
   };
 
   const applyRefDegree = () => {
@@ -339,6 +401,29 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   useEffect(() => { setLayoutAi({ loading: false, text: (indoorEntry(indoorAiLib[indoorAiKey]) || {}).text || '', error: '' }); }, [indoorAiKey, indoorAiLib]);
   const indoorRoomsForAi = useMemo(() => (sitM && xkChart && center ? buildIndoorRooms({ sitM: sitM.c, starSit: starSitC, method: star24Method, center, rot, rooms }, xkChart, xkFlow) : []), [sitM, xkChart, xkFlow, center, rot, rooms, starSitC, star24Method]);
   const indoorPayload = sitM ? { task: 'indoorLayout', indoor: { sit: sitM.c, face: faceM.c, period: 9, flowYear: flowYearNow, starFace: starFaceC, starFaceDeg, starSit: starSitC, method: star24Method, rooms: indoorRoomsForAi } } : null;
+
+  // ── AI 讀平面圖（vision）：自動搵房間＋位置，用家確認後一鍵標好 ──
+  const [fpAi, setFpAi] = useState({ loading: false, rooms: null, error: '' });
+  const runFpAi = async () => {
+    if (!img || fpAi.loading) return;
+    setFpAi({ loading: true, rooms: null, error: '' });
+    try {
+      const { json } = await aiInterpret({ task: 'readFloorplan', image: img.url, imgW: img.w, imgH: img.h });
+      const rooms = (json && json.rooms) || [];
+      if (!rooms.length) { setFpAi({ loading: false, rooms: null, error: 'AI 搵唔到房間，請試下清晰啲嘅平面圖，或手動標。' }); return; }
+      setFpAi({ loading: false, rooms, error: '' });
+    } catch (e) { setFpAi({ loading: false, rooms: null, error: String((e && e.message) || e) }); }
+  };
+  // 確認加入：AI 搵到嘅房間（normalized 0–1）→ 區域房（四邊形），之後可用 ✋山／拖頂點微調
+  const confirmFpAi = () => {
+    const detected = (fpAi.rooms || []).map((r) => {
+      const x1 = Math.round(Math.min(r.x1, r.x2) * img.w), y1 = Math.round(Math.min(r.y1, r.y2) * img.h);
+      const x2 = Math.round(Math.max(r.x1, r.x2) * img.w), y2 = Math.round(Math.max(r.y1, r.y2) * img.h);
+      return { pts: [{ x: x1, y: y1 }, { x: x2, y: y1 }, { x: x2, y: y2 }, { x: x1, y: y2 }], type: r.type, furniture: [] };
+    });
+    setRooms((rs) => [...rs, ...detected]);
+    setFpAi({ loading: false, rooms: null, error: '' });
+  };
 
   // ── 風水 AI 顧問（多輪對話）：玄空全盤＋二十四天星＋室內逐山佈局 ──
   const [chatStyle, setChatStyle] = useState('白話'); // 白話／書面
@@ -477,7 +562,17 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
 
       {img && (
         <div className="indoor-canvas-outer">
-          <div className="indoor-canvas-wrap">
+          {/* 放大控制 */}
+          <div className="indoor-zoom-bar">
+            <button type="button" className="indoor-zoom-btn" onClick={() => setZoom((z) => Math.max(1, Math.round((z - 0.25) * 100) / 100))} disabled={zoom <= 1}>−</button>
+            <input type="range" min="1" max="4" step="0.25" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="indoor-zoom-slider" />
+            <button type="button" className="indoor-zoom-btn" onClick={() => setZoom((z) => Math.min(4, Math.round((z + 0.25) * 100) / 100))} disabled={zoom >= 4}>＋</button>
+            <span className="indoor-zoom-val">{Math.round(zoom * 100)}%</span>
+            {zoom > 1 && <button type="button" className="indoor-zoom-btn" onClick={() => setZoom(1)}>重設</button>}
+            <span className="indoor-zoom-hint">{zoom > 1 ? '放大咗可以拖捲平面圖，精準標房' : '放大可以睇清楚先標'}</span>
+          </div>
+          <div className="indoor-canvas-wrap" style={{ overflow: zoom > 1 ? 'auto' : 'visible' }}>
+            <div className="indoor-canvas-scale" style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}>
             <img src={img.url} alt="floorplan" draggable={false} />
             <svg
               ref={svgRef}
@@ -538,7 +633,13 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
                 return (
                   <g key={'room' + i}>
                     {isArea ? (
+                      <>
                       <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={col} fillOpacity={0.18} stroke={col} strokeWidth={unit * 0.006} />
+                      {/* 微調：選中嘅區域房顯示可拖頂點 */}
+                      {selRoom === i && pts.map((p, k) => (
+                        <circle key={'vh' + k} cx={p.x} cy={p.y} r={PIN_R * 0.95} fill="#fff" stroke={col} strokeWidth={unit * 0.006} style={{ cursor: 'grab' }} />
+                      ))}
+                      </>
                     ) : (
                       <>
                         <circle cx={r.x} cy={r.y} r={HIT_R} fill="transparent" />
@@ -563,6 +664,7 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
                 </g>
               )}
             </svg>
+            </div>{/* /indoor-canvas-scale */}
 
             {/* floating compass settings */}
             <button type="button" className={`indoor-gear ${panelOpen ? 'open' : ''}`} onClick={() => setPanelOpen((o) => !o)}>⚙ 羅盤</button>
@@ -688,6 +790,34 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
               )}
             </div>
             {roomSubMode === 'area' && <div className="indoor-method-hint">在平面圖逐點描出房間範圍（至少 2-3 點成區域），完成後會分析涵蓋的所有山。</div>}
+
+            {/* AI 讀平面圖：自動搵房間＋位置，確認後一鍵標好 */}
+            <div className="indoor-fpai">
+              <button type="button" className="ai-btn indoor-fpai-btn" onClick={runFpAi} disabled={fpAi.loading}>
+                {fpAi.loading ? 'AI 讀平面圖中…' : '✨ AI 讀平面圖搵房間'}
+              </button>
+              {fpAi.error && <div className="ai-error">{fpAi.error}</div>}
+              {fpAi.rooms && (
+                <div className="indoor-fpai-review">
+                  <div className="indoor-fpai-head">AI 搵到 {fpAi.rooms.length} 個空間（可改類型／刪除，確認後加入；加入後可拖頂點微調）：</div>
+                  {fpAi.rooms.map((r, i) => (
+                    <div key={i} className="indoor-fpai-row">
+                      <select value={r.type} onChange={(e) => setFpAi((s) => ({ ...s, rooms: s.rooms.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)) }))}>
+                        {ROOM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <span className="indoor-fpai-pos">{Math.round(r.cx * 100)}%, {Math.round(r.cy * 100)}%</span>
+                      <button type="button" className="indoor-room-del" onClick={() => setFpAi((s) => ({ ...s, rooms: s.rooms.filter((_, j) => j !== i) }))}>✕</button>
+                    </div>
+                  ))}
+                  <div className="indoor-fpai-actions">
+                    <button type="button" className="indoor-area-done" onClick={confirmFpAi} disabled={!fpAi.rooms.length}>✓ 加入全部（{fpAi.rooms.length}）</button>
+                    <button type="button" className="indoor-area-cancel" onClick={() => setFpAi({ loading: false, rooms: null, error: '' })}>✕ 取消</button>
+                  </div>
+                </div>
+              )}
+              <div className="indoor-method-hint">AI 讀圖會用 vision 模型（需支援讀圖）；搵到嘅房間會以區域標出，你可以再微調。</div>
+            </div>
+
             {rooms.length === 0 && <div className="indoor-method-hint">尚未標注房間。</div>}
             {rooms.map((r, i) => {
               const infos = roomAnalysis(r);

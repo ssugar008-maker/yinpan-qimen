@@ -539,6 +539,19 @@ ${one(d.chartB, d.labelB || '乙盤')}
 整體 380 字內，分點清楚。`;
 }
 
+// AI 讀平面圖（vision）：搵出圖入面嘅房間／空間＋位置（0–1 比例），回 JSON
+const FP_ROOM_TYPES = ['大門', '玄關', '客廳', '飯廳', '廚房', '睡房', '主人房', '書房', '廁所', '浴室', '露台', '走廊', '儲物房', '神位', '樓梯'];
+function readFloorplanPrompt() {
+  return `你係平面圖分析員。呢張係一個住宅平面圖（俯視圖）。請搵出圖入面所有房間／空間，並估計佢哋嘅位置。
+只回 JSON 物件（唔好任何其他文字、唔好代碼框）：
+{"rooms":[{"type":"房間類型","cx":0.0,"cy":0.0,"x1":0.0,"y1":0.0,"x2":0.0,"y2":0.0}]}
+規則：
+- type 只可以用以下其中之一：${FP_ROOM_TYPES.join('、')}。
+- cx、cy＝房間中心，用 0–1 嘅比例（相對成張圖嘅寬同高，左上角係 0,0）。
+- x1、y1、x2、y2＝房間範圍嘅左上同右下角（0–1 比例）。如果唔肯定確實範圍，就畀個大概。
+- 儘量覆蓋所有可辨認嘅空間；廁所／浴室細就標細啲。順序由大到細。`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
   const apiKeyRaw = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.Qimen;
@@ -554,6 +567,35 @@ export default async function handler(req, res) {
   const ALLOWED_MODELS = new Set(['deepseek-v4-flash', 'deepseek-v4-pro']);
   const reqModel = payload && payload.model;
   const model = (reqModel && ALLOWED_MODELS.has(reqModel)) ? reqModel : (process.env.AI_MODEL || 'deepseek-v4-flash');
+
+  // AI 讀平面圖（vision）：獨立路徑（圖像訊息＋JSON 回應）。需要 vision-capable 模型（AI_VISION_MODEL 可另設）。
+  if (task === 'readFloorplan') {
+    const img = payload && payload.image;
+    if (!img || typeof img !== 'string' || !img.startsWith('data:image')) { res.status(400).json({ error: '缺少平面圖資料' }); return; }
+    const visionModel = process.env.AI_VISION_MODEL || model;
+    try {
+      const vbody = {
+        model: visionModel,
+        messages: [
+          { role: 'system', content: '你係平面圖分析員，只回 JSON。' },
+          { role: 'user', content: [{ type: 'text', text: readFloorplanPrompt() }, { type: 'image_url', image_url: { url: img } }] },
+        ],
+        temperature: 0.2, max_tokens: 2000,
+      };
+      const r = await fetch(`${base}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` }, body: JSON.stringify(vbody) });
+      if (!r.ok) { const txt = await r.text(); res.status(502).json({ error: `AI 讀圖回應錯誤（${r.status}）—— 呢個功能需要 vision-capable 嘅 AI 模型`, detail: txt.slice(0, 200) }); return; }
+      const data = await r.json();
+      const text = ((data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '').trim();
+      let parsed = null;
+      try { const m = text.match(/\{[\s\S]*\}/); parsed = m ? JSON.parse(m[0]) : null; } catch { parsed = null; }
+      const rooms = (parsed && Array.isArray(parsed.rooms) ? parsed.rooms : [])
+        .map((rm) => ({ type: FP_ROOM_TYPES.includes(rm && rm.type) ? rm.type : '睡房', cx: +rm.cx, cy: +rm.cy, x1: +rm.x1, y1: +rm.y1, x2: +rm.x2, y2: +rm.y2 }))
+        .filter((rm) => [rm.cx, rm.cy, rm.x1, rm.y1, rm.x2, rm.y2].every((v) => isFinite(v)));
+      const u = data && data.usage;
+      res.status(200).json({ json: { rooms }, model: visionModel, usage: u ? { pt: u.prompt_tokens || 0, ct: u.completion_tokens || 0 } : null });
+    } catch (e) { res.status(500).json({ error: 'AI 讀圖失敗', detail: String(e && e.message || e) }); }
+    return;
+  }
 
   let prompt;
   if (task === 'indoorLayout') {
