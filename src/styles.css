@@ -1138,6 +1138,9 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .xk-ai-hist-text { color: #8a8073; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── 二十四天星 ── */
+.tx-sit-select { padding: 5px 8px; border: 1px solid #d9cbb8; border-radius: 8px; font-size: 13px; background: #fff; color: #4a3a2f; }
+.tx-sit-or { font-size: 12px; color: #8a8073; }
+.tx-deg-input { width: 72px; padding: 5px 8px; border: 1px solid #d9cbb8; border-radius: 8px; font-size: 13px; }
 .tx-ring-wrap { display: flex; justify-content: center; margin: 8px 0 10px; }
 .tx-ring-wrap .star-ring { max-width: 92vw; height: auto; }
 /* 二十四天星：坐向星總覽卡 */
@@ -1297,6 +1300,16 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .qc-textarea {
   resize: none; line-height: 1.5; min-height: 42px; max-height: 140px; overflow-y: auto;
 }
+/* ── 風水 AI 顧問（室內對話）── */
+.fschat-section { margin-top: 14px; }
+.fschat-msgs { max-height: 46vh; }
+.fschat-input { resize: none; line-height: 1.5; min-height: 42px; max-height: 140px; overflow-y: auto; }
+.fschat-examples { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; }
+.fschat-ex-chip {
+  font-size: 12px; padding: 5px 11px; border-radius: 16px; border: 1px solid #d9c9f2;
+  background: #f3edfb; color: #6b3fa0; cursor: pointer; font-family: inherit;
+}
+.fschat-ex-chip:hover { background: #e9ddf9; }
 .qc-mic {
   flex: none; width: 40px; border-radius: 10px; border: 1px solid var(--line); background: #fff;
   font-size: 16px; cursor: pointer; font-family: inherit;

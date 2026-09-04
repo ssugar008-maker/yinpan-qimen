@@ -27,12 +27,13 @@ await page.setViewport({ width: 900, height: 1200 });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e.message)));
 page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
-let lastIndoor = null, lastXk = null;
+let lastIndoor = null, lastXk = null, lastChat = null;
 await page.setRequestInterception(true);
 page.on('request', (req) => {
   if (req.url().includes('/api/interpret')) {
     let b = {}; try { b = JSON.parse(req.postData() || '{}'); } catch { }
     if (b.task === 'indoorLayout') lastIndoor = b;
+    if (b.task === 'xkChat') lastChat = b;
     if (b.task === 'xkOverall' || b.task === 'xkPalace') lastXk = b;
     req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ text: '【佈局分析】主人房喺坎宮得地…', model: 'deepseek-v4-flash', usage: { pt: 100, ct: 50 } }) });
   } else if (req.url().includes('/api/library')) {
@@ -182,6 +183,47 @@ ok('玄空天星區有排盤法選擇', txMethod && txMethod.has.some((x) => x.i
 // 還原室內分頁
 await page.evaluate(() => [...document.querySelectorAll('.tab')].find((b) => b.textContent.includes('室內')).click());
 await sleep(500);
+
+console.log('\n[4e] 風水 AI 顧問（多輪對話）');
+const chatThere = await page.evaluate(() => !!document.querySelector('.fschat-section'));
+ok('風水 AI 顧問區出現', chatThere);
+const exChips = await page.evaluate(() => [...document.querySelectorAll('.fschat-ex-chip')].map((b) => b.textContent.trim()));
+ok('有示例問題 chips', exChips.length >= 3, exChips);
+// 送出第一條問題 → AI 回答（mock）
+await page.evaluate(() => {
+  const ta = document.querySelector('.fschat-input');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+  setter.call(ta, '廚房整體用咩色好？'); ta.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await sleep(150);
+await page.evaluate(() => [...document.querySelectorAll('.fschat-section button')].find((b) => b.textContent.trim() === '送出').click());
+await sleep(500);
+let chatSt = await page.evaluate(() => ({
+  user: document.querySelectorAll('.fschat-section .qc-msg.user').length,
+  ai: document.querySelectorAll('.fschat-section .qc-msg.ai').length,
+  aiText: document.querySelector('.fschat-section .qc-msg.ai .qc-bubble')?.innerText || '',
+}));
+ok('送出問題 → 用戶+AI 訊息各一', chatSt.user === 1 && chatSt.ai === 1, chatSt);
+ok('AI 回答顯示（mock）', chatSt.aiText.includes('佈局分析'), chatSt.aiText.slice(0, 60));
+// 多輪：再問一條
+await page.evaluate(() => {
+  const ta = document.querySelector('.fschat-input');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+  setter.call(ta, '雪櫃放邊個山好？'); ta.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await sleep(150);
+await page.evaluate(() => [...document.querySelectorAll('.fschat-section button')].find((b) => b.textContent.trim() === '送出').click());
+await sleep(500);
+chatSt = await page.evaluate(() => ({
+  user: document.querySelectorAll('.fschat-section .qc-msg.user').length,
+  ai: document.querySelectorAll('.fschat-section .qc-msg.ai').length,
+  saved: JSON.parse(localStorage.getItem('fs_chat_v1') || '{}'),
+}));
+ok('多輪對話（兩問兩答）', chatSt.user === 2 && chatSt.ai === 2, { user: chatSt.user, ai: chatSt.ai });
+ok('對話存檔（localStorage，兩條）', Object.values(chatSt.saved).some((v) => v && Array.isArray(v.thread) && v.thread.length === 2), Object.keys(chatSt.saved));
+// xkChat payload：有玄空全盤（9宮）＋二十四天星（24山）＋室內房間（逐山）
+ok('xkChat payload 有玄空盤＋天星＋室內逐山', !!(lastChat && lastChat.task === 'xkChat' && Array.isArray(lastChat.chart?.palaces) && lastChat.chart.palaces.length === 9 && Array.isArray(lastChat.star24?.stars) && lastChat.star24.stars.length === 24 && Array.isArray(lastChat.indoor?.rooms) && lastChat.indoor.rooms[0]?.byMountain?.length > 0), lastChat && { task: lastChat.task, palaces: lastChat.chart?.palaces?.length, stars: lastChat.star24?.stars?.length, rooms: lastChat.indoor?.rooms?.length, byMtn: lastChat.indoor?.rooms?.[0]?.byMountain?.length });
+ok('xkChat 多輪帶 followups', !!(lastChat && Array.isArray(lastChat.followups) && lastChat.followups.length === 1 && lastChat.question === '雪櫃放邊個山好？'), lastChat && { q: lastChat.question, fu: lastChat.followups?.length });
 
 console.log('\n[4d] ☀點光位唔會再落加點（重疊修正）');
 const pinsBefore = await page.evaluate(() => document.querySelectorAll('.indoor-canvas-wrap svg circle[fill="#ff8800"]').length);

@@ -183,6 +183,44 @@ function indoorBlock(indoor) {
   return `【室內佈局（用家已喺平面圖標注嘅實際房間）】\n${lines.join('\n')}`;
 }
 
+// 室內佈局（對話用）：逐山列出每間房所跨山嘅玄空組合＋天星（比 per-palace 更細，方便答「邊個山好」）
+function indoorChatBlock(indoor) {
+  if (!indoor || !Array.isArray(indoor.rooms) || !indoor.rooms.length) return '';
+  const lines = indoor.rooms.map((r) => {
+    const ms = (r.byMountain || []).map((m) => `${m.mountain}山（${m.palaceName}宮・${m.dir}）：玄空「${m.combo}」${m.ji}；天星「${m.star}」（${m.starJi}${m.starWx ? `・屬${m.starWx}` : ''}${m.starGoverns ? `，${m.starGoverns}` : ''}）`).join('\n  ');
+    const furn = (r.furniture || []).length ? `；現有家具：${r.furniture.join('、')}` : '';
+    return `◆ ${r.type}（跨 ${(r.mountains || []).join('、')} 山）${furn}\n  ${ms}`;
+  });
+  return `【室內實際佈局】（用家喺平面圖標注嘅房間，逐山列出玄空組合＋天星五行吉凶）\n${lines.join('\n')}`;
+}
+
+// 玄空＋二十四天星＋室內：AI 顧問對話（多輪）。d = { chart, star24, indoor }
+function xkChatPrompt(d, opts = {}) {
+  const { chart, star24, indoor } = d;
+  const style = CHAT_STYLE[opts.style] || CHAT_STYLE['白話'];
+  const detail = CHAT_DETAIL[opts.detail] || CHAT_DETAIL['適中'];
+  let head = xkHead(chart, '整體'); // 玄空全盤（九宮山向運星＋組合吉凶）
+  if (star24 && Array.isArray(star24.stars) && star24.stars.length) {
+    const s24lines = star24.stars.map((s) => `${s.mountain}山（${s.dir}・${s.palace}宮屬${s.palaceWx}）：${s.star}（${s.ji}${s.wx ? `・屬${s.wx}` : ''}・${s.group}組）— ${s.governs}`).join('\n');
+    head += `\n\n【二十四天星盤】（${star24.sit}山${star24.face}向・${star24.method === 'bazhai' ? '八宅遊年排法' : '玄道排法'}；吉星十二、凶星十二，各司其職）\n${s24lines}`;
+  }
+  const indoorB = indoorChatBlock(indoor);
+  return `你係一位玄空飛星＋二十四天星嘅陽宅風水顧問，而家同客人一對一對話。以下係呢間屋嘅完整盤面資料（玄空九宮、二十四天星、室內房間逐山佈局），以及五行對應參考。客人會問顏色、材質、傢俬、電器擺位（如雪櫃、洗衣機）、房間用途、化解催旺等問題。
+
+${head}
+
+${indoorB ? `${indoorB}\n\n` : ''}${XK_WX_REF}
+
+【對話方式要求】
+- 語氣：${style}
+- 詳略：${detail}
+- 像真人師傅同客人面談：先直接答重點（用邊個山、用咩色、點樣擺），再講依據（邊個星曜、五行生剋旺衰、吉凶）。
+- 客人問「邊個山好／放邊度」，要具體指出山名（如「卯山」「乙山」）同埋該山嘅星曜點解啱；問「用咩色／咩料」，按五行對應（生旺、洩煞、通關、剋制）推薦具體顏色同材質。
+- 若房間跨幾個山，要比較嗰幾個山嘅星曜吉凶五行，話邊個山最啱放乜（例如雪櫃屬水、電器屬火，要配合該山星曜五行）。
+- 不要列「1.2.3.」報告式分點；像對話一樣自然分段，可用「- 」列重點。
+- 若客人問題同呢間屋嘅風水無關，親切回應並引導返正題。`;
+}
+
 // 玄空＋天星：組主題 prompt（scope 為「整體」或宮名；extras 含 system/door/bazhai/star24/indoor）
 function xkPrompt(c, scope, theme, custom, context, extras = {}) {
   const { system = 'both', door = null, bazhai = null, star24 = null, indoor = null } = extras;
@@ -549,6 +587,9 @@ export default async function handler(req, res) {
   } else if (task === 'qimenFind') {
     if (!find || !find.item || !find.querent) { res.status(400).json({ error: '缺少尋物資料' }); return; }
     prompt = qimenFindPrompt(find);
+  } else if (task === 'xkChat') {
+    if (!chart || !Array.isArray(chart.palaces)) { res.status(400).json({ error: '缺少玄空盤資料' }); return; }
+    prompt = xkChatPrompt({ chart, star24, indoor }, { style: chatStyle, detail: chatDetail });
   } else if (task === 'xkOverall' || task === 'xkPalace') {
     if (!chart || !Array.isArray(chart.palaces)) { res.status(400).json({ error: '缺少玄空盤資料' }); return; }
     if (task === 'xkPalace' && !palace) { res.status(400).json({ error: '缺少玄空宮位資料' }); return; }
@@ -561,7 +602,7 @@ export default async function handler(req, res) {
 
   // 追問模式（多輪）：盤面 prompt 作首條 user 訊息，接歷史問答，最後是本次追問。
   // followups 由前端隨原 payload 一併送回，伺服器端重建上下文，避免 client 竄改 system/盤面資料。
-  const isChat = task === 'qimenChat';
+  const isChat = task === 'qimenChat' || task === 'xkChat';
   const isClassify = task === 'qimenClassify';
   const isTranslate = task === 'toStdChinese';
   const followQ = question && String(question).trim() ? String(question).trim().slice(0, 500) : '';

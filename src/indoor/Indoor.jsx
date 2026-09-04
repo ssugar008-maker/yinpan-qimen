@@ -3,9 +3,9 @@ import {
   MOUNTAINS24, TRIGRAMS8, mountainAt, norm360, screenAngle, polar, resolveCenter, coveredMountains,
 } from './geometry.js';
 import { analyzeFloorplan } from './analyze.js';
-import { star24MapBy, STAR24_INFO, PALACE_MOUNTAINS24, STAR24_METHODS, setStar24Method } from '../tianxing/stars24.js';
+import { star24MapBy, analyze24, STAR24_INFO, PALACE_MOUNTAINS24, STAR24_METHODS, setStar24Method } from '../tianxing/stars24.js';
 import { useStar24Method } from '../tianxing/useStar24Method.js';
-import { xuanKongChart, annualChart, starPair, PALACE_GUA, PALACE_DIR, PALACE_WX } from '../xuankong/engine.js';
+import { xuanKongChart, annualChart, starPair, PALACE_GUA, PALACE_DIR, PALACE_WX, GRID, STAR_NAME, STAR_WX, remedyText } from '../xuankong/engine.js';
 import { buildIndoorRooms } from './layoutData.js';
 
 // 山 → 宮位（後天八卦）反查
@@ -15,6 +15,7 @@ import CompassOverlay, { HaloText } from './CompassOverlay.jsx';
 import { aiInterpret } from '../ai.js';
 import { useCloudStore } from '../cloud.js';
 import FollowUpChat from '../FollowUp.jsx';
+import FengshuiChat from '../FengshuiChat.jsx';
 import AiText from '../AiText.jsx';
 
 const STORE_KEY = 'mo_indoor_v1';
@@ -329,6 +330,47 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   useEffect(() => { setLayoutAi({ loading: false, text: (indoorEntry(indoorAiLib[indoorAiKey]) || {}).text || '', error: '' }); }, [indoorAiKey, indoorAiLib]);
   const indoorRoomsForAi = useMemo(() => (sitM && xkChart && center ? buildIndoorRooms({ sitM: sitM.c, starSit: starSitC, method: star24Method, center, rot, rooms }, xkChart, xkFlow) : []), [sitM, xkChart, xkFlow, center, rot, rooms, starSitC, star24Method]);
   const indoorPayload = sitM ? { task: 'indoorLayout', indoor: { sit: sitM.c, face: faceM.c, period: 9, flowYear: flowYearNow, starFace: starFaceC, starFaceDeg, starSit: starSitC, method: star24Method, rooms: indoorRoomsForAi } } : null;
+
+  // ── 風水 AI 顧問（多輪對話）：玄空全盤＋二十四天星＋室內逐山佈局 ──
+  const [chatStyle, setChatStyle] = useState('白話'); // 白話／書面
+  const [chatDetail, setChatDetail] = useState('適中'); // 簡潔／適中／詳細
+  // 玄空全盤（xkHead「整體」格式）
+  const chatChart = useMemo(() => {
+    if (!sitM || !xkChart) return null;
+    return {
+      sit: sitM.c, face: faceM.c, period: 9, flowYear: flowYearNow, flowStar: xkFlow[5], qiXing: '下卦', types: [],
+      palaces: GRID.map((p) => {
+        const c = starPair(xkChart.sG[p], xkChart.fG[p]);
+        const s = xkChart.sG[p], f = xkChart.fG[p];
+        return {
+          name: PALACE_GUA[p], dir: PALACE_DIR[p], wx: PALACE_WX[p],
+          role: p === xkChart.sitPalace ? '坐山' : p === xkChart.facePalace ? '向首' : p === 5 ? '中宮' : '',
+          shan: s, shanName: STAR_NAME[s], shanWx: STAR_WX[s],
+          xiang: f, xiangName: STAR_NAME[f], xiangWx: STAR_WX[f],
+          yun: xkChart.pG[p], yunName: STAR_NAME[xkChart.pG[p]],
+          flow: xkFlow[p], flowName: STAR_NAME[xkFlow[p]],
+          combo: c.n, ji: c.t, comboDesc: c.d, remedy: remedyText(c.r),
+        };
+      }),
+    };
+  }, [sitM, faceM, xkChart, xkFlow]);
+  // 二十四天星盤（跟天星向首／排盤法）
+  const chatStar24 = useMemo(() => {
+    if (!starSitC) return null;
+    const ana = analyze24(starSitC, starFaceC, star24Method);
+    return {
+      sit: starSitC, face: starFaceC, sitStar: ana.sitStar, faceStar: ana.faceStar, method: star24Method,
+      stars: ana.rows.map((r) => ({ mountain: r.mountain, dir: r.dir, palace: r.palace, palaceWx: r.palaceWx, star: r.star, ji: r.ji, wx: r.wx, group: r.group, governs: r.governs })),
+    };
+  }, [starSitC, starFaceC, star24Method]);
+  const fsChatPayload = chatChart ? { task: 'xkChat', chart: chatChart, star24: chatStar24, indoor: { rooms: indoorRoomsForAi }, chatStyle, chatDetail } : null;
+  // 對話存檔（本坐向＋天星向首＋排盤法）：本機＋雲端
+  const FS_CHAT_KEY = 'fs_chat_v1';
+  const [fsChatLib, setFsChatLib] = useCloudStore('indoor', FS_CHAT_KEY, {});
+  const fsChatKey = sitM ? `${sitM.c}${faceM.c}|${starSitC || ''}|${star24Method}` : '';
+  const fsThread = (fsChatLib[fsChatKey] && fsChatLib[fsChatKey].thread) || [];
+  const fsAppend = (qa) => setFsChatLib((lib) => ({ ...lib, [fsChatKey]: { thread: [...((lib[fsChatKey] || {}).thread || []), qa], ts: Date.now() } }));
+  const fsClear = () => setFsChatLib((lib) => ({ ...lib, [fsChatKey]: { thread: [], ts: Date.now() } }));
   const runLayoutAi = async () => {
     setLayoutAi({ loading: true, text: '', error: '' });
     try {
@@ -695,6 +737,32 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
                   />
                 )}
                 <div className="sym-combo-note">（AI 對照玄空盤評估你標好嘅房間：邊間啱位、邊間唔啱位、應該點調、點化解）</div>
+              </div>
+            )}
+
+            {/* 風水 AI 顧問（多輪對話）：玄空全盤＋二十四天星＋室內逐山佈局 */}
+            {sitM && chatChart && (
+              <div className="indoor-ai fschat-section">
+                <div className="xk-sec-head">💬 風水 AI 顧問（對話）</div>
+                <div className="xk-note" style={{ marginBottom: 6 }}>直接同顧問傾 —— 佢睇到呢間屋嘅玄空全盤、二十四天星（{star24Method === 'bazhai' ? '八宅遊年' : '玄道'}）同你標注嘅房間（逐山）。問顏色、材質、傢俬電器擺位、房間用途、化解催旺都得。</div>
+                <div className="ai-theme-row" style={{ marginBottom: 6 }}>
+                  <span className="ai-theme-label">語氣</span>
+                  <div className="ai-theme-chips">
+                    {['白話', '書面'].map((s) => <button key={s} type="button" className={`ai-theme-chip${chatStyle === s ? ' active' : ''}`} onClick={() => setChatStyle(s)}>{s}</button>)}
+                  </div>
+                  <span className="ai-theme-label">詳略</span>
+                  <div className="ai-theme-chips">
+                    {['簡潔', '適中', '詳細'].map((s) => <button key={s} type="button" className={`ai-theme-chip${chatDetail === s ? ' active' : ''}`} onClick={() => setChatDetail(s)}>{s}</button>)}
+                  </div>
+                </div>
+                <FengshuiChat
+                  basePayload={fsChatPayload}
+                  thread={fsThread}
+                  onAppend={fsAppend}
+                  onClear={fsClear}
+                  examples={['廚房整體用什麼顏色好？', '雪櫃放邊個山好？', '主人房床頭宜向邊個方向？', '邊個方位做書房最好？']}
+                />
+                <div className="sym-combo-note">（對話按本坐向＋天星向首＋排盤法存檔，重整頁面亦保留）</div>
               </div>
             )}
           </div>

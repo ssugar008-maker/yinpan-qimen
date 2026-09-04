@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { STAR24_INFO, star24MapBy, analyze24, STAR24_METHODS, setStar24Method } from './stars24.js';
+import { STAR24_INFO, star24MapBy, analyze24, STAR24_METHODS, setStar24Method, M24_ORDER } from './stars24.js';
 import { useStar24Method } from './useStar24Method.js';
 import StarRing from './StarRing.jsx';
 import { useCloudStore } from '../cloud.js';
@@ -9,12 +9,26 @@ import AiText from '../AiText.jsx';
 
 const jiColor24 = (ji) => (ji === '吉' ? '#16a34a' : ji === '大凶' ? '#7f1d1d' : '#dc2626');
 const S24_THEMES = ['整體佈局', '財運', '感情桃花', '健康', '事業功名', '自訂'];
+// 對山（坐X山 → 向對山）：M24_ORDER 順時針，對山 = +12（差 180°）
+const opp24 = (m) => M24_ORDER[(M24_ORDER.indexOf(m) + 12) % 24];
+// 角度 → 山（每山 15°，山中心＝index×15）
+const mountainFromDeg = (d) => M24_ORDER[((Math.round((((d % 360) + 360) % 360) / 15)) % 24 + 24) % 24];
 
 // 二十四天星：天星環＋自動分析＋AI 分析。給坐山/向首即可（嵌入玄空飛星）。
 export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
   const method = useStar24Method(); // 排盤法：玄道（講堂）／八宅遊年
-  const map = useMemo(() => star24MapBy(method, sitM), [method, sitM]);
-  const ana = useMemo(() => analyze24(sitM, faceM, method), [sitM, faceM, method]);
+  // 天星坐向獨立設定：可直接揀坐山（向＝對山），或輸入向首角度；預設跟玄空坐向
+  const [sitOverride, setSitOverride] = useState('');
+  const [degInput, setDegInput] = useState('');
+  const effSitM = sitOverride || sitM;
+  const effFaceM = sitOverride ? opp24(sitOverride) : faceM;
+  const applyDeg = () => {
+    const d = parseFloat(degInput);
+    if (isNaN(d)) return;
+    setSitOverride(mountainFromDeg(d + 180)); // 輸入向首角度 → 坐山＝向首對山
+  };
+  const map = useMemo(() => star24MapBy(method, effSitM), [method, effSitM]);
+  const ana = useMemo(() => analyze24(effSitM, effFaceM, method), [effSitM, effFaceM, method]);
   const sitInfo = STAR24_INFO[ana.sitStar], faceInfo = STAR24_INFO[ana.faceStar];
 
   // ── AI 天星分析（主題 × 追問，雲端存檔）──
@@ -23,7 +37,7 @@ export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
   const [theme, setTheme] = useState('整體佈局');
   const [custom, setCustom] = useState('');
   const [ai, setAi] = useState({ loading: false, text: '', error: '' });
-  const aiKey = `${sitM}${faceM}|${theme}|${theme === '自訂' ? custom.trim() : ''}`;
+  const aiKey = `${effSitM}${effFaceM}|${method}|${theme}|${theme === '自訂' ? custom.trim() : ''}`;
   const entry = (v) => (typeof v === 'string' ? { text: v, thread: [] } : (v || null));
   useEffect(() => { setAi({ loading: false, text: (entry(s24Lib[aiKey]) || {}).text || '', error: '' }); }, [aiKey, s24Lib]);
 
@@ -31,7 +45,7 @@ export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
     task: 'star24',
     method,
     chart: {
-      sit: sitM, face: faceM, sitStar: ana.sitStar, faceStar: ana.faceStar,
+      sit: effSitM, face: effFaceM, sitStar: ana.sitStar, faceStar: ana.faceStar,
       stars: ana.rows.map((r) => ({
         mountain: r.mountain, dir: r.dir, palace: r.palace, palaceWx: r.palaceWx,
         star: r.star, ji: r.ji, wx: r.wx, group: r.group, governs: r.governs,
@@ -51,6 +65,22 @@ export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
 
   return (
     <>
+      {/* 天星坐向：直接揀坐山（向＝對山）或輸入向首角度，獨立排二十四天星；預設跟玄空坐向 */}
+      <div className="ai-theme-row" style={{ marginBottom: 8 }}>
+        <span className="ai-theme-label">天星坐向</span>
+        <div className="ai-theme-chips" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <select className="tx-sit-select" value={sitOverride} onChange={(e) => { setSitOverride(e.target.value); setDegInput(''); }}>
+            <option value="">跟玄空（{sitM}山{faceM}向）</option>
+            {M24_ORDER.map((m) => <option key={m} value={m}>坐{m}山向{opp24(m)}</option>)}
+          </select>
+          <span className="tx-sit-or">或 向首角度</span>
+          <input type="number" className="tx-deg-input" value={degInput} placeholder="°" min="0" max="360" step="0.1"
+            onChange={(e) => setDegInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') applyDeg(); }} />
+          <button type="button" className="ai-theme-chip" onClick={applyDeg} disabled={degInput === '' || isNaN(parseFloat(degInput))}>排盤</button>
+          {sitOverride && <button type="button" className="ai-theme-chip" onClick={() => { setSitOverride(''); setDegInput(''); }}>✕ 跟返玄空</button>}
+        </div>
+      </div>
+      {sitOverride && <div className="xk-note" style={{ marginBottom: 8 }}>天星盤而家獨立排：<b>坐{effSitM}山向{effFaceM}</b>（{method === 'bazhai' ? '八宅遊年' : '玄道'}）。玄空飛星仍跟原坐向。</div>}
       {/* 排盤法選擇：玄道（講堂甲乙兩盤）／八宅遊年（每坐山一盤） */}
       <div className="ai-theme-row" style={{ marginBottom: 8 }}>
         <span className="ai-theme-label">排盤法</span>
@@ -64,7 +94,7 @@ export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
       </div>
       {/* 天星環 */}
       <div className="tx-ring-wrap">
-        <StarRing map={map} sitM={sitM} faceM={faceM} size={ringSize} />
+        <StarRing map={map} sitM={effSitM} faceM={effFaceM} size={ringSize} />
       </div>
       <div className="xk-legend">
         <span><b style={{ color: '#16a34a' }}>綠</b>＝吉星　<b style={{ color: '#dc2626' }}>紅</b>＝凶星　<b style={{ color: '#7f1d1d' }}>暗紅</b>＝大凶</span>
@@ -74,13 +104,13 @@ export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
       {/* 坐向星總覽 */}
       <div className="tx-summary">
         <div className="tx-sum-card">
-          <div className="tx-sum-label">坐山・{sitM}山</div>
+          <div className="tx-sum-label">坐山・{effSitM}山</div>
           <div className="tx-sum-star" style={{ color: jiColor24(sitInfo.ji) }}>{ana.sitStar}</div>
           <span className="tx-sum-ji" style={{ background: jiColor24(sitInfo.ji) }}>{sitInfo.ji}</span>
           <div className="tx-sum-governs">{sitInfo.governs}</div>
         </div>
         <div className="tx-sum-card">
-          <div className="tx-sum-label">向首・{faceM}</div>
+          <div className="tx-sum-label">向首・{effFaceM}</div>
           <div className="tx-sum-star" style={{ color: jiColor24(faceInfo.ji) }}>{ana.faceStar}</div>
           <span className="tx-sum-ji" style={{ background: jiColor24(faceInfo.ji) }}>{faceInfo.ji}</span>
           <div className="tx-sum-governs">{faceInfo.governs}</div>

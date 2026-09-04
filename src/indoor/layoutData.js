@@ -37,13 +37,21 @@ export function buildIndoorRooms(layout, xkChart, xkFlow) {
     // 去重宮位（一宮可能跨多山）
     const seen = new Set();
     const palaces = [];
+    const byMountain = []; // 逐山明細（一山一星），供對話式 AI 答「邊個山好」
     mountains.forEach((mc) => {
       const p = MOUNTAIN_TO_PALACE[mc];
-      if (!p || seen.has(p)) return;
-      seen.add(p);
+      if (!p) return;
       const combo = xkChart ? starPair(xkChart.sG[p], xkChart.fG[p]) : null;
       const star = star24 ? star24[mc] : null;
       const starInfo = star ? (STAR24_INFO[star] || {}) : null;
+      byMountain.push({
+        mountain: mc, palace: p, palaceName: PALACE_GUA[p], dir: PALACE_DIR[p], wx: PALACE_WX[p],
+        shan: xkChart ? xkChart.sG[p] : null, xiang: xkChart ? xkChart.fG[p] : null,
+        combo: combo ? combo.n : '', ji: combo ? combo.t : (starInfo.ji || '平'),
+        star, starJi: starInfo.ji || '', starWx: starInfo.wx || '', starGoverns: starInfo.governs || '',
+      });
+      if (seen.has(p)) return;
+      seen.add(p);
       palaces.push({
         palace: p, palaceName: PALACE_GUA[p], dir: PALACE_DIR[p], wx: PALACE_WX[p],
         shan: xkChart ? xkChart.sG[p] : null, xiang: xkChart ? xkChart.fG[p] : null,
@@ -52,6 +60,6 @@ export function buildIndoorRooms(layout, xkChart, xkFlow) {
         star, starJi: starInfo.ji || '', starGoverns: starInfo.governs || '',
       });
     });
-    return { type: room.type, mountains, furniture: room.furniture || [], palaces };
+    return { type: room.type, mountains, furniture: room.furniture || [], palaces, byMountain };
   }).filter((r) => r.palaces.length);
 }
