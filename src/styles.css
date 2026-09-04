@@ -1457,6 +1457,28 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .indoor-fpai-row select { padding: 4px 8px; border: 1px solid #cbb98f; border-radius: 6px; font-size: 12px; font-weight: 700; color: #5a4a2f; background: #fff; }
 .indoor-fpai-pos { font-size: 11px; color: #8a7a5a; flex: 1; }
 .indoor-fpai-actions { display: flex; gap: 6px; margin-top: 8px; }
+/* 快速加區域房＋微調 */
+.indoor-quick-area { border-color: #16a34a !important; color: #16a34a !important; font-weight: 800; }
+.indoor-quick-area.active { background: #16a34a !important; color: #fff !important; }
+.indoor-quick-area-hint { font-size: 12px; color: #166534; background: #eaf7ee; border: 1px solid #b7e2c5; border-radius: 8px; padding: 5px 10px; margin-top: 6px; }
+.indoor-room-tune { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px; background: #f4f0fb; border: 1px solid #e2d3f5; border-radius: 8px; padding: 5px 8px; }
+.indoor-room-tune-hint { font-size: 11px; color: #6a5a8a; line-height: 1.4; }
+/* 家具／門風水 */
+.indoor-features { margin-top: 12px; }
+.indoor-door-summary { font-size: 12px; color: #4a4238; background: #f4efe3; border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; line-height: 1.8; }
+.indoor-door-chip { display: inline-block; background: #fff; border: 1px solid #d8cbaa; border-radius: 8px; padding: 2px 8px; margin: 2px 4px 2px 0; font-size: 11px; }
+.indoor-feature { background: #fff; border: 1px solid #eee5d5; border-radius: 8px; padding: 7px 10px; margin-bottom: 6px; }
+.indoor-feature-top { display: flex; align-items: center; gap: 7px; }
+.indoor-feature-name { font-size: 13px; font-weight: 800; color: #5a4a2f; }
+.indoor-feature-pos { font-size: 11px; color: #8a7a5a; flex: 1; line-height: 1.4; }
+.indoor-feature-face { font-size: 12px; color: #4a4238; margin-top: 4px; line-height: 1.6; }
+.indoor-fpai-ficon { font-size: 16px; }
+.indoor-fpai-fname { font-size: 12px; font-weight: 700; color: #5a4a2f; }
+.indoor-bedhead { margin-top: 6px; background: #f4f0fb; border: 1px solid #e2d3f5; border-radius: 8px; padding: 7px 9px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.indoor-bedhead-label { font-size: 11px; font-weight: 700; color: #6a5a8a; }
+.indoor-bedhead-year { width: 82px; padding: 4px 8px; border: 1px solid #cbb98f; border-radius: 6px; font-size: 12px; }
+.indoor-bedhead-result { width: 100%; font-size: 12px; color: #4a4238; line-height: 1.6; margin-top: 4px; }
+.indoor-bedhead-best { font-size: 11px; color: #6a5a3f; margin-top: 3px; line-height: 1.5; }
 .indoor-room-furn { margin-top: 6px; display: flex; gap: 6px; align-items: flex-start; }
 .indoor-room-furn-label { font-size: 11px; font-weight: 700; color: #8a7a5a; flex: none; padding-top: 3px; }
 .indoor-room-furn-chips { display: flex; flex-wrap: wrap; gap: 4px; }

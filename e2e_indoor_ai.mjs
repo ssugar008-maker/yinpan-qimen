@@ -36,7 +36,7 @@ page.on('request', (req) => {
     if (b.task === 'xkChat') lastChat = b;
     if (b.task === 'xkOverall' || b.task === 'xkPalace') lastXk = b;
     if (b.task === 'readFloorplan') {
-      req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ json: { rooms: [{ type: '廚房', cx: 0.7, cy: 0.3, x1: 0.6, y1: 0.2, x2: 0.8, y2: 0.4 }, { type: '廁所', cx: 0.2, cy: 0.7, x1: 0.15, y1: 0.65, x2: 0.25, y2: 0.75 }] }, model: 'test-vision', usage: { pt: 500, ct: 80 } }) });
+      req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ json: { rooms: [{ type: '廚房', cx: 0.7, cy: 0.3, x1: 0.6, y1: 0.2, x2: 0.8, y2: 0.4 }, { type: '廁所', cx: 0.2, cy: 0.7, x1: 0.15, y1: 0.65, x2: 0.25, y2: 0.75 }], features: [{ type: '床', cx: 0.5, cy: 0.2, dir: 0 }, { type: '門', cx: 0.5, cy: 0.9, dir: 180 }, { type: '灶頭', cx: 0.7, cy: 0.3 }] }, model: 'test-vision', usage: { pt: 500, ct: 80 } }) });
       return;
     }
     req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ text: '【佈局分析】主人房喺坎宮得地…', model: 'deepseek-v4-flash', usage: { pt: 100, ct: 50 } }) });
@@ -310,16 +310,67 @@ await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b
 await sleep(500);
 const fpReview = await page.evaluate(() => ({
   review: !!document.querySelector('.indoor-fpai-review'),
-  rows: document.querySelectorAll('.indoor-fpai-row').length,
-  types: [...document.querySelectorAll('.indoor-fpai-row select')].map((s) => s.value),
+  roomSelects: [...document.querySelectorAll('.indoor-fpai-row select')].map((s) => s.value),
+  featureNames: [...document.querySelectorAll('.indoor-fpai-row .indoor-fpai-fname')].map((x) => x.textContent),
 }));
-ok('AI 讀圖：review 出現＋搵到 2 個空間', fpReview.review && fpReview.rows === 2, fpReview);
-ok('AI 讀圖：類型正確（廚房、廁所）', fpReview.types.includes('廚房') && fpReview.types.includes('廁所'), fpReview.types);
+ok('AI 讀圖：review 出現＋搵到 2 空間＋3 家具/門', fpReview.review && fpReview.roomSelects.length === 2 && fpReview.featureNames.length === 3, fpReview);
+ok('AI 讀圖：空間類型（廚房、廁所）', fpReview.roomSelects.includes('廚房') && fpReview.roomSelects.includes('廁所'), fpReview.roomSelects);
+ok('AI 讀圖：家具/門（床、門、灶頭）', fpReview.featureNames.some((x) => x.includes('床')) && fpReview.featureNames.some((x) => x.includes('門')) && fpReview.featureNames.some((x) => x.includes('灶頭')), fpReview.featureNames);
 const roomsBeforeFp = await page.evaluate(() => document.querySelectorAll('.indoor-room').length);
 await page.evaluate(() => [...document.querySelectorAll('.indoor-fpai-actions button')].find((b) => b.textContent.includes('加入全部'))?.click());
 await sleep(400);
 const roomsAfterFp = await page.evaluate(() => document.querySelectorAll('.indoor-room').length);
 ok('確認加入 → 多咗 2 間房', roomsAfterFp === roomsBeforeFp + 2, { before: roomsBeforeFp, after: roomsAfterFp });
+
+console.log('\n[4j] 家具／門風水（門向分析＋床頭命卦）');
+const featPanel = await page.evaluate(() => ({
+  panel: !!document.querySelector('.indoor-features'),
+  doorSummary: document.querySelector('.indoor-door-summary')?.innerText || '',
+  features: document.querySelectorAll('.indoor-feature').length,
+  bedhead: !!document.querySelector('.indoor-bedhead'),
+}));
+ok('家具/門風水 panel 出現（3 個 feature）', featPanel.panel && featPanel.features === 3, featPanel);
+ok('門向分析：全宅 1 道門＋方向', featPanel.doorSummary.includes('1 道門') && featPanel.doorSummary.includes('向'), featPanel.doorSummary);
+ok('床有命卦輸入（年份＋性別）', featPanel.bedhead, featPanel);
+// 床頭命卦：輸入 1990 男 → 坎命（東四命）；mock 床向 0°（子山坎宮）＝坎命伏位（吉）
+await page.evaluate(() => {
+  const bed = [...document.querySelectorAll('.indoor-feature')].find((x) => x.querySelector('.indoor-feature-name')?.textContent === '床');
+  const inp = bed.querySelector('.indoor-bedhead-year');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(inp, '1990'); inp.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await sleep(150);
+await page.evaluate(() => {
+  const bed = [...document.querySelectorAll('.indoor-feature')].find((x) => x.querySelector('.indoor-feature-name')?.textContent === '床');
+  [...bed.querySelectorAll('.seg button')].find((b) => b.textContent.trim() === '男')?.click();
+});
+await sleep(300);
+const bedResult = await page.evaluate(() => {
+  const bed = [...document.querySelectorAll('.indoor-feature')].find((x) => x.querySelector('.indoor-feature-name')?.textContent === '床');
+  return bed.querySelector('.indoor-bedhead-result')?.innerText || '';
+});
+ok('床頭命卦：1990男 → 坎命（東四命）＋四吉方', bedResult.includes('坎') && bedResult.includes('東四命') && bedResult.includes('伏位'), bedResult.slice(0, 100));
+
+console.log('\n[4k] 快速加區域房＋微調頂點');
+// 快速加區域房掣
+const quickArea = await page.evaluate(() => !!document.querySelector('.indoor-quick-area'));
+ok('有「＋ 加區域房」快速掣', quickArea, quickArea);
+// 微調：揀中一間區域房 → 頂點手柄＋邊中點（加頂點）
+await page.evaluate(() => { window.scrollTo(0, 0); });
+// 搵一間區域房（AI 加嘅廚房係四邊形）並選中佢
+await page.evaluate(() => {
+  const rooms = JSON.parse(localStorage.getItem('mo_indoor_v1')).rooms;
+  const areaIdx = rooms.findIndex((r) => r.pts && r.pts.length >= 2);
+  // 直接喺房list 撳嗰間房
+  document.querySelectorAll('.indoor-room')[areaIdx]?.click();
+});
+await sleep(300);
+const tune = await page.evaluate(() => ({
+  vertexHandles: document.querySelectorAll('.indoor-canvas-wrap svg circle[style*="grab"]').length,
+  midHandles: document.querySelectorAll('.indoor-canvas-wrap svg circle[style*="copy"]').length,
+  tuneBar: !!document.querySelector('.indoor-room-tune'),
+}));
+ok('選中區域房 → 顯示可拖頂點＋邊中點（加頂點）＋微調列', tune.vertexHandles >= 4 && tune.midHandles >= 4 && tune.tuneBar, tune);
 
 console.log('\n[5] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
