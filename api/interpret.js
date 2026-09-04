@@ -429,7 +429,8 @@ function indoorLayoutPrompt(d) {
     const furn = (r.furniture || []).length ? `；家具：${r.furniture.join('、')}` : '';
     return `◆ ${r.type}（${(r.mountains || []).join('、')}山）${furn}\n  ${ps}`;
   }).join('\n');
-  return `以下是一個陽宅的玄空飛星盤（${d.sit}山${d.face}向，${d.period}運${d.flowYear ? `，${d.flowYear}年流年` : ''}），以及用家在平面圖上標注的實際房間佈局（每間房列出所跨宮位的山向星、星曜組合吉凶、傳統化解與天星）：
+  const starNote = d.starFace ? `\n注意：二十四天星唔跟羅盤坐向，而係跟「日照最強方向」（納光口）起盤——天星向首喺 ${d.starFace}（${d.starFaceDeg}°），天星坐山 ${d.starSit}。` : '';
+  return `以下是一個陽宅的玄空飛星盤（${d.sit}山${d.face}向，${d.period}運${d.flowYear ? `，${d.flowYear}年流年` : ''}），以及用家在平面圖上標注的實際房間佈局（每間房列出所跨宮位的山向星、星曜組合吉凶、傳統化解與天星）：${starNote}
 
 【各房間現狀】
 ${roomLines}

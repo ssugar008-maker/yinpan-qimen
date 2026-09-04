@@ -87,7 +87,57 @@ await sleep(500);
 ok('玄空 AI 請求帶 indoor 佈局', lastXk && lastXk.indoor && Array.isArray(lastXk.indoor.rooms) && lastXk.indoor.rooms.length === 2, lastXk && { hasIndoor: !!lastXk.indoor, rooms: lastXk.indoor && lastXk.indoor.rooms && lastXk.indoor.rooms.length });
 ok('indoor 房間帶宮位組合', lastXk && lastXk.indoor.rooms[0].palaces[0].combo !== undefined, lastXk && lastXk.indoor.rooms[0].palaces[0]);
 
-console.log('\n[4] Console／頁面錯誤');
+console.log('\n[4] 天星向首（日照最強方向）');
+// 先返回室內分頁（上一節去咗玄空）
+await page.evaluate(() => window.scrollTo(0, 0));
+await page.evaluate(() => [...document.querySelectorAll('.tab')].find((b) => b.textContent.includes('室內')).click());
+await sleep(800);
+// 預設：無 ☀ 標記，天星跟羅盤坐子
+let sf = await page.evaluate(() => ({
+  sun: !!document.querySelector('.indoor-starface'),
+  marker: !!document.querySelector('.indoor-canvas-wrap svg .qc-sun, .indoor-canvas-wrap svg text'),
+  hint: document.querySelector('.indoor-starface .indoor-method-hint')?.textContent.trim() || null,
+}));
+ok('天星向首控制列存在', sf.sun);
+// 輸入天星向首 90°（卯・正東）
+await page.evaluate(() => {
+  const i = document.querySelector('.indoor-starface input[type=number]');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(i, '90'); i.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await sleep(400);
+sf = await page.evaluate(() => ({
+  hint: document.querySelector('.indoor-starface .indoor-method-hint')?.textContent.trim() || null,
+  sunMarker: [...document.querySelectorAll('.indoor-canvas-wrap svg text')].some((x) => x.textContent === '☀'),
+}));
+ok('顯示天星向首卯・坐山酉', sf.hint && sf.hint.includes('天星向首') && sf.hint.includes('卯') && sf.hint.includes('酉'), sf.hint);
+ok('☀ 光位標記出現', sf.sunMarker);
+// 天星盤重排：坐酉起盤 → 某天星位置改變。對照：坐子時子山＝天錢；坐酉時子山＝屍氣
+const starAtZi = await page.evaluate(() => {
+  const texts = [...document.querySelectorAll('.indoor-canvas-wrap svg text')];
+  return texts.map((x) => x.textContent).join('|');
+});
+ok('天星環重排（坐酉後子山唔再係天錢）', starAtZi.includes('屍氣'), starAtZi.slice(0, 120));
+// 跑室內 AI → payload 帶天星向首
+await page.evaluate(() => document.querySelector('.indoor-ai .ai-btn').click());
+await sleep(500);
+ok('室內 AI payload 帶天星向首（卯90°）＋坐山（酉）', lastIndoor && lastIndoor.indoor.starFace === '卯' && lastIndoor.indoor.starFaceDeg === 90 && lastIndoor.indoor.starSit === '酉', lastIndoor && { sf: lastIndoor.indoor.starFace, sd: lastIndoor.indoor.starFaceDeg, ss: lastIndoor.indoor.starSit });
+// ☀ 點光位模式：點平面圖中心正東 → 天星向首≈90°
+await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('點光位')).click());
+await sleep(150);
+const svgBox = await page.evaluate(() => { const r = document.querySelector('.indoor-canvas-wrap svg').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+// 圖 1000x1000 中心 (500,500)；正東＝中心右方。svg 寬度對應 1000 圖像素
+await page.mouse.click(svgBox.x + svgBox.w * 0.5 + svgBox.w * 0.3, svgBox.y + svgBox.h * 0.5);
+await sleep(300);
+sf = await page.evaluate(() => document.querySelector('.indoor-starface input[type=number]')?.value);
+ok('☀ 點光位：點正東 → 天星向首≈90°', sf !== null && Math.abs(parseFloat(sf) - 90) < 8, sf);
+// 清除
+await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '清除' && b.closest('.indoor-starface'))?.click());
+await sleep(200);
+sf = await page.evaluate(() => ({ marker: [...document.querySelectorAll('.indoor-canvas-wrap svg text')].some((x) => x.textContent === '☀'), val: document.querySelector('.indoor-starface input[type=number]')?.value }));
+ok('清除後 ☀ 標記消失', !sf.marker && (sf.val === '' || sf.val == null), sf);
+
+console.log('\n[5] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
 
 await browser.close();
