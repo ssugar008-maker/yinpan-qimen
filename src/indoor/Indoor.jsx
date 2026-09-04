@@ -335,6 +335,12 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     if (!img) return;
     const pt = toSvg(e);
     const d = drag.current;
+    // 檢視模式：撳區域房 → 直接選中＋切去標房模式進入微調
+    if (mode === 'view') {
+      const ri = roomHit(pt);
+      if (ri >= 0 && rooms[ri].pts && rooms[ri].pts.length >= 2) { setSelRoom(ri); setMode('room'); setRoomSubMode('point'); }
+      return;
+    }
     if (d.idx != null) {
       if (!d.moved) setSelectedPin((s) => (s === d.idx ? null : d.idx));
     } else if (sunMode && d.downPt && !d.moved && center) {
@@ -624,6 +630,13 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
             {zoom > 1 && <button type="button" className="indoor-zoom-btn" onClick={() => setZoom(1)}>重設</button>}
             <span className="indoor-zoom-hint">{zoom > 1 ? '放大咗可以拖捲平面圖，精準標房' : '放大可以睇清楚先標'}</span>
           </div>
+          {/* 微調模式提示（選中咗區域房） */}
+          {selRoom != null && rooms[selRoom] && rooms[selRoom].pts && mode === 'room' && roomSubMode === 'point' && (
+            <div className="indoor-editing-banner">
+              ✋ 微調「{rooms[selRoom].type}」：拖白色頂點改形狀｜點邊上虛線 ○ 加頂點
+              <button type="button" onClick={() => { setSelRoom(null); setDelVertexMode(false); }}>✓ 完成</button>
+            </div>
+          )}
           <div className="indoor-canvas-wrap" style={{ overflow: zoom > 1 ? 'auto' : 'visible' }}>
             <div className="indoor-canvas-scale" style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}>
             <img src={img.url} alt="floorplan" draggable={false} />
@@ -917,6 +930,10 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
                     </select>
                     <span className="indoor-room-pal">{isArea ? `區域・跨 ${infos.length} 山` : (infos[0] ? `${infos[0].palaceName}宮・${infos[0].dir}・${infos[0].mountain}山` : '')}</span>
                     <span className="indoor-room-ji" style={{ background: col }}>{ji || '—'}</span>
+                    {isArea && (
+                      <button type="button" className={`indoor-room-mtn-btn${selRoom === i ? ' on' : ''}`} title="微調呢間房嘅範圍（拖頂點改形狀）"
+                        onClick={(e) => { e.stopPropagation(); setMode('room'); setRoomSubMode('point'); setSelRoom(i); setMtnPickerIdx(null); document.querySelector('.indoor-canvas-wrap')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>✋微調</button>
+                    )}
                     <button type="button" className={`indoor-room-mtn-btn${(r.manualMountains && r.manualMountains.length) ? ' on' : ''}`} title="手動指定呢間房喺邊啲山"
                       onClick={(e) => { e.stopPropagation(); setMtnPickerIdx(mtnPickerIdx === i ? null : i); }}>✋山</button>
                     <button type="button" className="indoor-room-del" onClick={(e) => { e.stopPropagation(); setRooms((rs) => rs.filter((_, j) => j !== i)); setSelRoom(null); }}>✕</button>
