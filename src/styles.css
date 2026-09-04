@@ -1481,6 +1481,19 @@ details.collapsible .form { background: transparent; border: none; padding: 0; m
 .indoor-bedhead-year { width: 82px; padding: 4px 8px; border: 1px solid #cbb98f; border-radius: 6px; font-size: 12px; }
 .indoor-bedhead-result { width: 100%; font-size: 12px; color: #4a4238; line-height: 1.6; margin-top: 4px; }
 .indoor-bedhead-best { font-size: 11px; color: #6a5a3f; margin-top: 3px; line-height: 1.5; }
+/* 標家具模式（手動放床/灶頭/廁所/門/窗） */
+.indoor-feature-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; background: #fdf0f7; border: 1px solid #f0c8e0; border-radius: 8px; padding: 6px 10px; }
+.indoor-feature-bar-label { font-size: 12px; font-weight: 700; color: #8a2a6a; }
+.indoor-feature-bar-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.indoor-feature-bar-hint { font-size: 11px; color: #8a7a5a; }
+/* 精密角度（床頭/門向） */
+.indoor-feature.sel { border-color: #d21f8f; box-shadow: 0 0 0 1.5px #f0c8e0; }
+.indoor-angle-editor { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 6px; background: #fdf0f7; border: 1px solid #f0c8e0; border-radius: 8px; padding: 6px 9px; }
+.indoor-angle-label { font-size: 11px; font-weight: 700; color: #8a2a6a; }
+.indoor-angle-input { width: 82px; padding: 4px 8px; border: 1px solid #cbb98f; border-radius: 6px; font-size: 12px; }
+.indoor-angle-mt { font-size: 12px; color: #4a4238; }
+.indoor-angle-slider { flex: 1; min-width: 100px; }
+.indoor-angle-hint { font-size: 11px; color: #8a7a5a; }
 .indoor-room-furn { margin-top: 6px; display: flex; gap: 6px; align-items: flex-start; }
 .indoor-room-furn-label { font-size: 11px; font-weight: 700; color: #8a7a5a; flex: none; padding-top: 3px; }
 .indoor-room-furn-chips { display: flex; flex-wrap: wrap; gap: 4px; }

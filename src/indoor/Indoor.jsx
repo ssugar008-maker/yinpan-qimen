@@ -124,6 +124,8 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   const [areaDraft, setAreaDraft] = useState([]); // 區域描點中
   const [mtnPickerIdx, setMtnPickerIdx] = useState(null); // 邊間房開緊「手動指定山」picker
   const [delVertexMode, setDelVertexMode] = useState(false); // 刪頂點模式（揀中嘅區域房）
+  const [featureType, setFeatureType] = useState('床'); // 標家具模式：要放嘅類型
+  const [selFeature, setSelFeature] = useState(null); // 揀中嘅家具/門（微調方向用）
   // 天星向首（日照最強方向）：starFaceDeg＝光位度數；sunMode＝☀ 點光位模式
   const [starFaceDeg, setStarFaceDeg] = useState(saved?.starFaceDeg ?? null);
   const [sunMode, setSunMode] = useState(false);
@@ -235,6 +237,21 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     });
     return best;
   };
+  // 搵最近嘅家具/門標記（微調位置用）
+  const nearestFeature = (pt) => {
+    let best = -1, bestD = HIT_R;
+    features.forEach((f, i) => {
+      const d = Math.hypot(f.x - pt.x, f.y - pt.y);
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    return best;
+  };
+  // 選中嘅床/門嘅旋轉手柄（箭嘴尖）位置
+  const featureRotateTip = (f) => {
+    if (!f || f.dir == null) return null;
+    const rad = (f.dir * Math.PI) / 180;
+    return { x: f.x + Math.sin(rad) * unit * 0.055, y: f.y - Math.cos(rad) * unit * 0.055 };
+  };
   // 搵選中嘅區域房嘅最近邊中點（加頂點用）
   const nearestEdgeMidpoint = (pt, roomIdx) => {
     const r = rooms[roomIdx];
@@ -252,14 +269,14 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   const onPointerDown = (e) => {
     if (!img || mode === 'view') return;
     const pt = toSvg(e);
-    drag.current = { idx: null, downPt: pt, moved: false, roomIdx: null, vertexIdx: null, origPts: null, origXY: null };
+    drag.current = { idx: null, downPt: pt, moved: false, roomIdx: null, vertexIdx: null, origPts: null, origXY: null, featureIdx: null, rotating: false, origFeatureXY: null };
     if (mode === 'pin') {
       const i = nearestPin(pt);
       if (i >= 0) {
         drag.current.idx = i;
         try { e.target.setPointerCapture(e.pointerId); } catch {}
       }
-    } else if (mode === 'room' && roomSubMode === 'point') {
+    } else if ((mode === 'room' && roomSubMode === 'point') || mode === 'tune') {
       // 微調：揀中嘅區域房可拖頂點／加頂點／刪頂點；點到房就拖成間
       const vi = selRoom != null ? nearestRoomVertex(pt, selRoom) : -1;
       if (vi >= 0 && delVertexMode) {
@@ -291,6 +308,22 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
           try { e.target.setPointerCapture(e.pointerId); } catch {}
         }
       }
+    } else if (mode === 'feature') {
+      // 標家具模式：拖旋轉手柄（選中嘅床/門）或拖成件（移動）
+      if (selFeature != null && features[selFeature] && features[selFeature].dir != null) {
+        const tip = featureRotateTip(features[selFeature]);
+        if (tip && Math.hypot(tip.x - pt.x, tip.y - pt.y) < HIT_R * 1.3) {
+          drag.current.featureIdx = selFeature; drag.current.rotating = true;
+          try { e.target.setPointerCapture(e.pointerId); } catch {}
+          return;
+        }
+      }
+      const fi = nearestFeature(pt);
+      if (fi >= 0) {
+        drag.current.featureIdx = fi; drag.current.rotating = false;
+        drag.current.origFeatureXY = { x: features[fi].x, y: features[fi].y };
+        try { e.target.setPointerCapture(e.pointerId); } catch {}
+      }
     } else if (mode === 'manual') {
       setManualCenter(pt);
       setCenterMethod('manual');
@@ -312,6 +345,19 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     if (d.downPt && Math.hypot(pt.x - d.downPt.x, pt.y - d.downPt.y) > HIT_R * 0.4) d.moved = true;
     if (d.idx != null) {
       setPins((ps) => ps.map((p, i) => (i === d.idx ? pt : p)));
+    } else if (d.featureIdx != null) {
+      if (d.rotating) {
+        // 拖旋轉手柄 → 精密改方向（圖像角）
+        const f = features[d.featureIdx];
+        if (f) {
+          const newDir = Math.round(norm360(screenAngle({ x: f.x, y: f.y }, pt)) * 10) / 10;
+          setFeatures((fs) => fs.map((x, j) => (j === d.featureIdx ? { ...x, dir: newDir } : x)));
+        }
+      } else {
+        // 拖成件家具/門（移動位置）
+        const dx = pt.x - d.downPt.x, dy = pt.y - d.downPt.y;
+        setFeatures((fs) => fs.map((x, j) => (j === d.featureIdx && d.origFeatureXY ? { ...x, x: Math.round(d.origFeatureXY.x + dx), y: Math.round(d.origFeatureXY.y + dy) } : x)));
+      }
     } else if (d.roomIdx != null) {
       if (d.vertexIdx != null) {
         // 微調：拖區域房嘅頂點
@@ -349,6 +395,22 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
       setSunMode(false);
     } else if (mode === 'pin' && d.downPt && !d.moved) {
       setPins((ps) => { const np = [...ps, pt]; setSelectedPin(np.length - 1); return np; });
+    } else if (mode === 'tune' && d.downPt) {
+      // 微調模式：拖完頂點/房；冇郁就揀房（點房選中，點空白取消）
+      if (!d.moved && d.vertexIdx == null) {
+        const ri = d.roomIdx != null ? d.roomIdx : roomHit(pt);
+        setSelRoom(ri >= 0 ? ri : null);
+      }
+    } else if (mode === 'feature' && d.downPt) {
+      if (d.featureIdx != null) {
+        // 拖完/撿完一件家具；冇郁就選中佢（方便設方向）
+        if (!d.moved) setSelFeature(d.featureIdx);
+      } else if (!d.moved) {
+        // 點空白 → 放一件家具/門（床/門預設向 0°，之後精密調）
+        const hasDir = featureType === '床' || featureType === '門';
+        const f = { type: featureType, x: Math.round(pt.x), y: Math.round(pt.y), dir: hasDir ? 0 : null };
+        setFeatures((fs) => { const nf = [...fs, f]; setSelFeature(nf.length - 1); return nf; });
+      }
     } else if (mode === 'room' && d.downPt) {
       if (d.roomIdx != null) {
         // 微調完（拖房／拖頂點）；冇郁就當係選中
@@ -591,6 +653,26 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
             <button type="button" className={`indoor-mode indoor-quick-area${mode === 'room' && roomSubMode === 'area' ? ' active' : ''}`}
               onClick={() => { setMode('room'); setRoomSubMode('area'); setAreaDraft([]); }}
               title="直接開始描一間房嘅範圍（跨多山）">＋ 加區域房</button>
+            {/* 微調：一撿入編輯模式，撳平面圖上嘅房就可以拖頂點（唔使拉到下面） */}
+            <button type="button" className={`indoor-mode${mode === 'tune' ? ' active' : ''}`}
+              onClick={() => { setMode('tune'); setRoomSubMode('point'); }}
+              title="微調模式：撳平面圖上嘅房間，就可以拖頂點改範圍">✋ 微調</button>
+            {/* 標家具/風水物：手動放床（連床頭向）、灶頭、廁所、門、窗 */}
+            <button type="button" className={`indoor-mode${mode === 'feature' ? ' active' : ''}`}
+              onClick={() => setMode('feature')}
+              title="手動標重要家具／風水物（床、灶頭、廁所、門、窗）">🛏 標家具</button>
+          </div>
+        )}
+        {/* 標家具模式：揀類型＋點平面圖放置 */}
+        {img && mode === 'feature' && (
+          <div className="indoor-feature-bar">
+            <span className="indoor-feature-bar-label">放：</span>
+            <div className="indoor-feature-bar-chips">
+              {FEATURE_TYPES.map((t) => (
+                <button key={t} type="button" className={`furn-chip${featureType === t ? ' on' : ''}`} onClick={() => setFeatureType(t)}>{FEATURE_ICON[t]} {t}</button>
+              ))}
+            </div>
+            <span className="indoor-feature-bar-hint">點平面圖放置；床／門放完再設方向</span>
           </div>
         )}
         {img && mode === 'room' && roomSubMode === 'area' && (
@@ -722,19 +804,20 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
                   </g>
                 );
               })}
-              {/* 家具／門標記（AI 讀圖）；床同門顯示方向箭嘴 */}
+              {/* 家具／門標記（AI 讀圖）；床同門顯示方向箭嘴；選中嘅有旋轉手柄 */}
               {features.map((f, i) => {
                 const rad = (((f.dir ?? 0)) * Math.PI) / 180;
                 const ax = f.x + Math.sin(rad) * unit * 0.055, ay = f.y - Math.cos(rad) * unit * 0.055;
+                const sel = selFeature === i;
                 return (
                   <g key={'feat' + i}>
                     <circle cx={f.x} cy={f.y} r={HIT_R} fill="transparent" />
-                    <circle cx={f.x} cy={f.y} r={PIN_R * 1.15} fill="#fff" stroke="#8a5a2b" strokeWidth={unit * 0.005} />
+                    <circle cx={f.x} cy={f.y} r={PIN_R * 1.15} fill={sel ? '#fdf0d5' : '#fff'} stroke={sel ? '#d21f8f' : '#8a5a2b'} strokeWidth={unit * (sel ? 0.008 : 0.005)} />
                     <HaloText x={f.x} y={f.y} size={unit * 0.042} fill="#5a4a2f">{FEATURE_ICON[f.type] || '◆'}</HaloText>
                     {f.dir != null && (
                       <>
-                        <line x1={f.x} y1={f.y} x2={ax} y2={ay} stroke="#8a5a2b" strokeWidth={unit * 0.007} />
-                        <circle cx={ax} cy={ay} r={PIN_R * 0.4} fill="#8a5a2b" />
+                        <line x1={f.x} y1={f.y} x2={ax} y2={ay} stroke={sel ? '#d21f8f' : '#8a5a2b'} strokeWidth={unit * 0.007} />
+                        <circle cx={ax} cy={ay} r={PIN_R * (sel ? 0.7 : 0.4)} fill={sel ? '#d21f8f' : '#8a5a2b'} style={{ cursor: 'grab' }} />
                       </>
                     )}
                   </g>
@@ -1026,18 +1109,32 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
                   const posJi = info.posM && info.posM.xk ? info.posM.xk.combo.t : (info.posM && info.posM.starInfo ? info.posM.starInfo.ji : '平');
                   const faceJi = info.faceM && info.faceM.xk ? info.faceM.xk.combo.t : (info.faceM && info.faceM.starInfo ? info.faceM.starInfo.ji : null);
                   return (
-                    <div key={i} className="indoor-feature">
-                      <div className="indoor-feature-top">
+                    <div key={i} className={`indoor-feature${selFeature === i ? ' sel' : ''}`}>
+                      <div className="indoor-feature-top" onClick={() => setSelFeature(selFeature === i ? null : i)} style={{ cursor: 'pointer' }}>
                         <span className="indoor-fpai-ficon">{FEATURE_ICON[f.type] || '◆'}</span>
                         <span className="indoor-feature-name">{f.type}</span>
                         <span className="indoor-feature-pos">喺 {info.posM ? `${info.posM.mountain}山（${info.posM.palaceName}宮・${info.posM.dir}）` : '—'}{info.posM && info.posM.star ? `・天星${info.posM.star}（${posJi}）` : ''}</span>
-                        <button type="button" className="indoor-room-del" onClick={() => setFeatures((fs) => fs.filter((_, j) => j !== i))}>✕</button>
+                        <button type="button" className="indoor-room-del" onClick={(e) => { e.stopPropagation(); setFeatures((fs) => fs.filter((_, j) => j !== i)); }}>✕</button>
                       </div>
                       {info.faceM && (
                         <div className="indoor-feature-face">
                           向 <b>{info.faceM.mountain}山</b>（{info.faceDeg}°・{info.faceM.dir}）
                           {info.faceM.star && <>・天星「{info.faceM.star}」（{info.faceM.starInfo.ji}{info.faceM.starInfo.governs ? `，${info.faceM.starInfo.governs}` : ''}）</>}
                           {faceJi && <>・<b style={{ color: faceJi === '吉' || faceJi === '半吉' ? '#16a34a' : '#dc2626' }}>{faceJi}</b></>}
+                        </div>
+                      )}
+                      {/* 精密角度調整（揀中嘅床/門）：改羅盤度數，平面圖箭嘴跟住轉 */}
+                      {selFeature === i && f.dir != null && (
+                        <div className="indoor-angle-editor" onClick={(e) => e.stopPropagation()}>
+                          <span className="indoor-angle-label">精密角度：</span>
+                          <input type="number" className="indoor-angle-input" min="0" max="359.9" step="0.1"
+                            value={Math.round(norm360(f.dir - rot) * 10) / 10}
+                            onChange={(e) => { const c = parseFloat(e.target.value); if (!isNaN(c)) setFeatures((fs) => fs.map((x, j) => (j === i ? { ...x, dir: norm360(c + rot) } : x))); }} />
+                          <span className="indoor-angle-mt">°＝<b>{info.faceM ? `${info.faceM.mountain}山 ${info.faceM.dir}` : ''}</b></span>
+                          <input type="range" className="indoor-angle-slider" min="0" max="359.9" step="0.1"
+                            value={norm360(f.dir - rot)}
+                            onChange={(e) => { const c = parseFloat(e.target.value); setFeatures((fs) => fs.map((x, j) => (j === i ? { ...x, dir: norm360(c + rot) } : x))); }} />
+                          <span className="indoor-angle-hint">拖平面圖上嘅箭嘴都得</span>
                         </div>
                       )}
                       {/* 床頭命卦：輸入使用者年份＋性別 */}
