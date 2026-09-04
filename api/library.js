@@ -7,7 +7,7 @@
 //   GET  /api/library?ns=<namespace>        → { updatedAt, data }
 //   POST /api/library  { ns, updatedAt, data } → 覆寫該 namespace（last-write-wins）
 
-const ALLOWED_NS = new Set(['qimen_palace', 'qimen_find', 'qimen_ask', 'xuankong', 'star24', 'qimen_chat']);
+const ALLOWED_NS = new Set(['qimen_palace', 'qimen_find', 'qimen_ask', 'xuankong', 'star24', 'qimen_chat', 'indoor']);
 
 // ── KV（Upstash Redis REST）──
 function kvConfig() {

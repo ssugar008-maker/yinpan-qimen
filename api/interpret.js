@@ -172,9 +172,20 @@ const XK_THEMES = {
 整體 340 字內，分點清楚。`,
 };
 
-// 玄空＋天星：組主題 prompt（scope 為「整體」或宮名；extras 含 system/door/bazhai/star24）
+// 室內佈局區塊（用家喺平面圖標注嘅房間）：玄空 AI 與室內 AI 共用
+function indoorBlock(indoor) {
+  if (!indoor || !Array.isArray(indoor.rooms) || !indoor.rooms.length) return '';
+  const lines = indoor.rooms.map((r) => {
+    const ps = (r.palaces || []).map((p) => `${p.palaceName}宮（${p.dir}）：山${p.shan} 向${p.xiang}${p.flow ? ` 流年${p.flow}` : ''}「${p.combo}」${p.ji}${p.remedy ? `（化解：${p.remedy}）` : ''}${p.star ? `；天星「${p.star}」（${p.starJi}${p.starGoverns ? `，${p.starGoverns}` : ''}）` : ''}`).join('；');
+    const furn = (r.furniture || []).length ? `；家具：${r.furniture.join('、')}` : '';
+    return `◆ ${r.type}（${(r.mountains || []).join('、')}山）${furn}\n  ${ps}`;
+  });
+  return `【室內佈局（用家已喺平面圖標注嘅實際房間）】\n${lines.join('\n')}`;
+}
+
+// 玄空＋天星：組主題 prompt（scope 為「整體」或宮名；extras 含 system/door/bazhai/star24/indoor）
 function xkPrompt(c, scope, theme, custom, context, extras = {}) {
-  const { system = 'both', door = null, bazhai = null, star24 = null } = extras;
+  const { system = 'both', door = null, bazhai = null, star24 = null, indoor = null } = extras;
   const isOverall = !scope || scope === '整體';
   const useXk = system !== 's24';
   const useS24 = system !== 'xk';
@@ -198,6 +209,8 @@ function xkPrompt(c, scope, theme, custom, context, extras = {}) {
     extraLines.push(`宅主命卦：${bazhai.guaName}命（${bazhai.east4 ? '東四命' : '西四命'}）。八宅吉方：${good}；凶方：${bad}。`);
   }
   const extraBlock = extraLines.length ? `\n\n【大門與八宅命卦】\n${extraLines.join('\n')}` : '';
+  const indoorB = indoorBlock(indoor);
+  const indoorSection = indoorB ? `\n\n${indoorB}\n（請評估呢個實際佈局：邊間房啱位、邊間唔啱位，唔啱位嘅應該點調或點化解。）` : '';
 
   const sysNote = useXk && useS24 ? '玄空飛星與二十四天星並參' : useXk ? '以玄空飛星為據' : '以二十四天星為據';
   let instr;
@@ -220,7 +233,7 @@ function xkPrompt(c, scope, theme, custom, context, extras = {}) {
     ? `\n【使用者補充的實際情況】${String(context).trim()}\n（請把這些條件納入判斷，建議要配合現場實況。）`
     : '';
   const needRef = theme && theme !== '綜合';
-  return `${head}${extraBlock}${extra}\n\n${needRef ? `${XK_WX_REF}\n\n` : ''}${instr}`;
+  return `${head}${extraBlock}${indoorSection}${extra}\n\n${needRef ? `${XK_WX_REF}\n\n` : ''}${instr}`;
 }
 
 // 奇門：自動尋物（時干為物、日干為事主）
@@ -408,6 +421,26 @@ ${lines}
 請以天星風水大師角度分析。${instr}`;
 }
 
+// 室內佈局 AI：對照玄空盤評估用家已標注嘅房間，給出理想調動＋化解
+// indoor payload: { sit, face, period, flowYear, rooms[] }
+function indoorLayoutPrompt(d) {
+  const roomLines = (d.rooms || []).map((r) => {
+    const ps = (r.palaces || []).map((p) => `${p.palaceName}宮（${p.dir}）：山${p.shan} 向${p.xiang}${p.flow ? ` 流年${p.flow}` : ''}「${p.combo}」${p.ji}${p.remedy ? `（傳統化解：${p.remedy}）` : ''}${p.star ? `；天星「${p.star}」（${p.starJi}${p.starGoverns ? `，${p.starGoverns}` : ''}）` : ''}`).join('；');
+    const furn = (r.furniture || []).length ? `；家具：${r.furniture.join('、')}` : '';
+    return `◆ ${r.type}（${(r.mountains || []).join('、')}山）${furn}\n  ${ps}`;
+  }).join('\n');
+  return `以下是一個陽宅的玄空飛星盤（${d.sit}山${d.face}向，${d.period}運${d.flowYear ? `，${d.flowYear}年流年` : ''}），以及用家在平面圖上標注的實際房間佈局（每間房列出所跨宮位的山向星、星曜組合吉凶、傳統化解與天星）：
+
+【各房間現狀】
+${roomLines}
+
+請以玄空風水大師角度，對照星盤評估這個實際佈局，條理清楚：
+1. 現狀評估：逐間房講好定唔好（邊間啱位、邊間唔啱位），並講明邊個星曜組合支持。
+2. 理想佈局：如果重新編排，邊種房（主人房／睡房／廚房／廁所／大門／書房／神位…）應該喺邊個宮位最啱（睡房宜吉位、廁所宜壓凶位、大門宜旺、書房宜文昌位等），指出最關鍵嘅一至兩個調動。
+3. 化解之法：對唔郁得嘅房，給出具體化解（五行物品、顏色、材質、擺放位置、數量）。
+整體 450 字內，分點清楚。`;
+}
+
 // 玄空：換運對比
 function xkComparePrompt(d) {
   const chartStr = (c) => c.palaces.map((p) => `${p.name}(${p.dir})山${p.shan}向${p.xiang}運${p.yun}`).join('；');
@@ -470,7 +503,7 @@ export default async function handler(req, res) {
 
   let payload = req.body;
   if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
-  const { task, theme, custom, context, palace, symbols, chart, find, compare, ask, question, followups, system, door, bazhai, star24, chatStyle, chatDetail } = payload || {};
+  const { task, theme, custom, context, palace, symbols, chart, find, compare, ask, question, followups, system, door, bazhai, star24, chatStyle, chatDetail, indoor } = payload || {};
 
   // 模型選擇：前端可選 flash（快速）/ pro（深度），白名單驗證，預設 flash
   const ALLOWED_MODELS = new Set(['deepseek-v4-flash', 'deepseek-v4-pro']);
@@ -478,7 +511,11 @@ export default async function handler(req, res) {
   const model = (reqModel && ALLOWED_MODELS.has(reqModel)) ? reqModel : (process.env.AI_MODEL || 'deepseek-v4-flash');
 
   let prompt;
-  if (task === 'toStdChinese') {
+  if (task === 'indoorLayout') {
+    const ind = payload && payload.indoor;
+    if (!ind || !Array.isArray(ind.rooms) || !ind.rooms.length) { res.status(400).json({ error: '缺少室內佈局資料' }); return; }
+    prompt = indoorLayoutPrompt(ind);
+  } else if (task === 'toStdChinese') {
     const txt = (chart && chart.text) || (payload && payload.text) || '';
     if (!String(txt).trim()) { res.status(400).json({ error: '缺少文字' }); return; }
     prompt = stdChinesePrompt(String(txt).slice(0, 3000));
@@ -512,7 +549,7 @@ export default async function handler(req, res) {
     if (!chart || !Array.isArray(chart.palaces)) { res.status(400).json({ error: '缺少玄空盤資料' }); return; }
     if (task === 'xkPalace' && !palace) { res.status(400).json({ error: '缺少玄空宮位資料' }); return; }
     if (theme === '自訂' && !(custom && String(custom).trim())) { res.status(400).json({ error: '請輸入想問的問題' }); return; }
-    prompt = xkPrompt(chart, task === 'xkOverall' ? '整體' : palace, theme, custom, context, { system, door, bazhai, star24 });
+    prompt = xkPrompt(chart, task === 'xkOverall' ? '整體' : palace, theme, custom, context, { system, door, bazhai, star24, indoor });
   } else {
     if (!palace || !Array.isArray(symbols) || symbols.length === 0) { res.status(400).json({ error: '缺少宮位符號資料' }); return; }
     prompt = qimenPrompt(palace, symbols, theme || '物品', custom || '');

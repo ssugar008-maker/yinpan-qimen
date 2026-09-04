@@ -1,15 +1,20 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import {
-  MOUNTAINS24, TRIGRAMS8, mountainAt, norm360, screenAngle, polar, resolveCenter,
+  MOUNTAINS24, TRIGRAMS8, mountainAt, norm360, screenAngle, polar, resolveCenter, coveredMountains,
 } from './geometry.js';
 import { analyzeFloorplan } from './analyze.js';
 import { star24Map, STAR24_INFO, PALACE_MOUNTAINS24 } from '../tianxing/stars24.js';
 import { xuanKongChart, annualChart, starPair, PALACE_GUA, PALACE_DIR, PALACE_WX } from '../xuankong/engine.js';
+import { buildIndoorRooms } from './layoutData.js';
 
 // 山 → 宮位（後天八卦）反查
 const MOUNTAIN_TO_PALACE = {};
 Object.entries(PALACE_MOUNTAINS24).forEach(([p, ms]) => ms.forEach((m) => { MOUNTAIN_TO_PALACE[m] = +p; }));
 import CompassOverlay, { HaloText } from './CompassOverlay.jsx';
+import { aiInterpret } from '../ai.js';
+import { useCloudStore } from '../cloud.js';
+import FollowUpChat from '../FollowUp.jsx';
+import AiText from '../AiText.jsx';
 
 const STORE_KEY = 'mo_indoor_v1';
 
@@ -31,18 +36,7 @@ const COMMON_FURNITURE = [
   { n: '冷氣', wx: '金' }, { n: '音響', wx: '火' }, { n: '保險箱', wx: '金' }, { n: '水晶', wx: '土' }, { n: '鹽燈', wx: '土' },
 ];
 
-// 計算一個區域（多邊形點）從中心跨越哪些山（角度範圍）；單點則回傳所在山
-function coveredMountains(pts, center, rot) {
-  const bs = pts.map((p) => norm360(screenAngle(center, p) - rot));
-  if (!bs.length) return [];
-  if (bs.length === 1) return [mountainAt(bs[0]).c];
-  const mn = Math.min(...bs), mx = Math.max(...bs);
-  const wrap = mx - mn > 180; // 跨正北
-  return MOUNTAINS24.filter((m) => {
-    if (!wrap) return mn <= m.deg + 7.5 && mx >= m.deg - 7.5; // 扇形與山區（±7.5°）有重疊
-    return (m.deg + 7.5 >= mx) || (m.deg - 7.5 <= mn); // 跨 0° 的情況
-  }).map((m) => m.c);
-}
+// （coveredMountains 已移至 geometry.js 共用）
 // 依房間類型＋所在宮位（玄空組合／天星）給出吉凶與建議
 function roomAdvice(info, type) {
   if (!info) return null;
@@ -311,6 +305,24 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     let worst = infos[0];
     infos.forEach((i) => { const ji = i.xk ? i.xk.combo.t : (i.starInfo ? i.starInfo.ji : '平'); if ((order[ji] ?? 1) > (order[worst.xk ? worst.xk.combo.t : (worst.starInfo ? worst.starInfo.ji : '平')] ?? 1)) worst = i; });
     return worst.xk ? worst.xk.combo.t : (worst.starInfo ? worst.starInfo.ji : '平');
+  };
+
+  // ── AI 佈局分析＋化解（對照玄空盤評估已標注嘅房間）── 雲端存檔 ns 'indoor'
+  const INDOOR_AI_KEY = 'indoor_ai_v1';
+  const [indoorAiLib, setIndoorAiLib] = useCloudStore('indoor', INDOOR_AI_KEY, {});
+  const [layoutAi, setLayoutAi] = useState({ loading: false, text: '', error: '' });
+  const indoorAiKey = sitM ? `${sitM.c}${faceM.c}|${rooms.length}` : '';
+  const indoorEntry = (v) => (typeof v === 'string' ? { text: v, thread: [] } : (v || null));
+  useEffect(() => { setLayoutAi({ loading: false, text: (indoorEntry(indoorAiLib[indoorAiKey]) || {}).text || '', error: '' }); }, [indoorAiKey, indoorAiLib]);
+  const indoorRoomsForAi = useMemo(() => (sitM && xkChart && center ? buildIndoorRooms({ sitM: sitM.c, center, rot, rooms }, xkChart, xkFlow) : []), [sitM, xkChart, xkFlow, center, rot, rooms]);
+  const indoorPayload = sitM ? { task: 'indoorLayout', indoor: { sit: sitM.c, face: faceM.c, period: 9, flowYear: flowYearNow, rooms: indoorRoomsForAi } } : null;
+  const runLayoutAi = async () => {
+    setLayoutAi({ loading: true, text: '', error: '' });
+    try {
+      const { text } = await aiInterpret(indoorPayload);
+      setLayoutAi({ loading: false, text, error: '' });
+      if (text) setIndoorAiLib((lib) => ({ ...lib, [indoorAiKey]: { text, thread: (indoorEntry(lib[indoorAiKey]) || {}).thread || [], ts: Date.now() } }));
+    } catch (e) { setLayoutAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
   };
 
   // persist computed centre + facing so the 玄空 quick-view can render without re-detecting
@@ -625,6 +637,27 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
                 </div>
               );
             })}
+
+            {/* AI 佈局分析＋化解 */}
+            {rooms.length > 0 && sitM && (
+              <div className="indoor-ai">
+                <button type="button" className="ai-btn" onClick={runLayoutAi} disabled={layoutAi.loading || !indoorRoomsForAi.length}>
+                  {layoutAi.loading ? 'AI 分析中…' : (layoutAi.text ? '↻ 重新分析（已存檔）' : '✨ AI 佈局分析＋化解')}
+                </button>
+                {layoutAi.error && <div className="ai-error">{layoutAi.error}</div>}
+                {layoutAi.text && <div className="ai-result"><AiText text={layoutAi.text} /></div>}
+                {layoutAi.text && <div className="ai-saved">✓ 已存檔（本坐向＋房間數），重整頁面亦保留</div>}
+                {layoutAi.text && (
+                  <FollowUpChat
+                    basePayload={indoorPayload}
+                    thread={(indoorEntry(indoorAiLib[indoorAiKey]) || {}).thread || []}
+                    onAppend={(qa) => setIndoorAiLib((lib) => { const e0 = indoorEntry(lib[indoorAiKey]) || { text: layoutAi.text }; return { ...lib, [indoorAiKey]: { ...e0, text: e0.text || layoutAi.text, thread: [...(e0.thread || []), qa] } }; })}
+                    placeholder="追問：就呢個佈局再問（例：主人房點化解）…"
+                  />
+                )}
+                <div className="sym-combo-note">（AI 對照玄空盤評估你標好嘅房間：邊間啱位、邊間唔啱位、應該點調、點化解）</div>
+              </div>
+            )}
           </div>
         </div>
       )}

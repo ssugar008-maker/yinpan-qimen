@@ -40,6 +40,19 @@ export function screenAngle(p1, p2) {
   return norm360((Math.atan2(dx, -dy) * 180) / Math.PI);
 }
 
+// 計算一個區域（多邊形點）從中心跨越哪些山（角度範圍）；單點則回傳所在山
+export function coveredMountains(pts, center, rot) {
+  const bs = pts.map((p) => norm360(screenAngle(center, p) - rot));
+  if (!bs.length) return [];
+  if (bs.length === 1) return [mountainAt(bs[0]).c];
+  const mn = Math.min(...bs), mx = Math.max(...bs);
+  const wrap = mx - mn > 180; // 跨正北
+  return MOUNTAINS24.filter((m) => {
+    if (!wrap) return mn <= m.deg + 7.5 && mx >= m.deg - 7.5; // 扇形與山區（±7.5°）有重疊
+    return (m.deg + 7.5 >= mx) || (m.deg - 7.5 <= mn); // 跨 0° 的情況
+  }).map((m) => m.c);
+}
+
 // Point on a circle. `saDeg` is a SCREEN angle (0 = up, clockwise).
 export function polar(cx, cy, r, saDeg) {
   const a = (saDeg * Math.PI) / 180;
