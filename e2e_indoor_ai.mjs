@@ -372,6 +372,46 @@ const tune = await page.evaluate(() => ({
 }));
 ok('選中區域房 → 顯示可拖頂點＋邊中點（加頂點）＋微調列', tune.vertexHandles >= 4 && tune.midHandles >= 4 && tune.tuneBar, tune);
 
+console.log('\n[4l] 微調模式掣＋手動標家具＋精密角度');
+// 頂部工具列有「✋ 微調」＋「🛏 標家具」掣
+const topBtns = await page.evaluate(() => [...document.querySelectorAll('.indoor-modes .indoor-mode')].map((b) => b.textContent.trim()));
+ok('頂部有「✋ 微調」＋「🛏 標家具」掣', topBtns.some((x) => x.includes('微調')) && topBtns.some((x) => x.includes('標家具')), topBtns);
+// 標家具模式：撳「🛏 標家具」→ 類型選擇出現
+await page.evaluate(() => [...document.querySelectorAll('.indoor-modes .indoor-mode')].find((b) => b.textContent.includes('標家具'))?.click());
+await sleep(200);
+const featBar = await page.evaluate(() => ({ bar: !!document.querySelector('.indoor-feature-bar'), types: document.querySelectorAll('.indoor-feature-bar .furn-chip').length }));
+ok('標家具模式：類型選擇出現（床/灶頭/廁所/門/窗）', featBar.bar && featBar.types === 5, featBar);
+// 揀灶頭，點平面圖放一件
+await page.evaluate(() => [...document.querySelectorAll('.indoor-feature-bar .furn-chip')].find((b) => b.textContent.includes('灶頭'))?.click());
+await sleep(150);
+const featsBefore = await page.evaluate(() => document.querySelectorAll('.indoor-feature').length);
+await page.evaluate(() => {
+  const svg = document.querySelector('.indoor-canvas-wrap svg');
+  const p = new DOMPoint(600, 600).matrixTransform(svg.getScreenCTM());
+  const o = { bubbles: true, pointerId: 1, isPrimary: true };
+  svg.dispatchEvent(new PointerEvent('pointerdown', { ...o, clientX: p.x, clientY: p.y }));
+  svg.dispatchEvent(new PointerEvent('pointerup', { ...o, clientX: p.x, clientY: p.y }));
+});
+await sleep(300);
+const featsAfter = await page.evaluate(() => document.querySelectorAll('.indoor-feature').length);
+ok('手動標家具：點平面圖放咗件灶頭', featsAfter === featsBefore + 1, { before: featsBefore, after: featsAfter });
+// 精密角度：揀中道門，改角度 0° → 向子山（正北）
+await page.evaluate(() => {
+  const door = [...document.querySelectorAll('.indoor-feature')].find((x) => x.querySelector('.indoor-feature-name')?.textContent === '門');
+  door?.querySelector('.indoor-feature-top')?.click();
+});
+await sleep(200);
+const angleThere = await page.evaluate(() => !!document.querySelector('.indoor-angle-editor'));
+ok('揀中門 → 精密角度編輯器出現', angleThere, angleThere);
+await page.evaluate(() => {
+  const inp = document.querySelector('.indoor-angle-input');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(inp, '0'); inp.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await sleep(300);
+const angleRes = await page.evaluate(() => document.querySelector('.indoor-angle-mt')?.innerText || '');
+ok('改角度 0° → 向子山（正北）', angleRes.includes('子'), angleRes);
+
 console.log('\n[5] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
 
