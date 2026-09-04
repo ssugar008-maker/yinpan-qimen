@@ -16,7 +16,7 @@ const star24Color = (ji) => (ji === '吉' ? '#16a34a' : ji === '大凶' ? '#7f1d
 
 // 24 山羅盤覆疊層（室內分頁與玄空速覽共用）。
 // 延伸線畫在每山的「界線」（山度 ±7.5°），山名/天星/度數標在每山的「中心」（兩條延伸線之間），不再壓在線上。
-export default function CompassOverlay({ center, rot = 0, facingDeg = null, layers, unit, Rout, Rline, mtFont, tgFont, star24 = null, opacity = 1 }) {
+export default function CompassOverlay({ center, rot = 0, facingDeg = null, layers, unit, Rout, Rline, mtFont, tgFont, star24 = null, opacity = 1, star24Rot = 0, starFaceDeg = null }) {
   if (!center) return null;
   const L = { mountains: true, trigrams: true, stars24: false, degrees: false, extend: true, ...(layers || {}) };
   return (
@@ -49,14 +49,25 @@ export default function CompassOverlay({ center, rot = 0, facingDeg = null, laye
         const p = polar(center.x, center.y, Rout * 0.6, sa);
         return <HaloText key={'tg' + t.c} x={p.x} y={p.y} size={tgFont} fill="#7a2a8f">{t.c}</HaloText>;
       })}
-      {/* 24 天星（依坐山起盤，吉凶著色），每山中心 */}
+      {/* 24 天星（依天星坐山起盤，吉凶著色），每山中心；star24Rot＝天星環相對羅盤嘅微調（日照取向） */}
       {L.stars24 && star24 && MOUNTAINS24.map((m) => {
         const star = star24[m.c];
         const info = STAR24_INFO[star] || {};
-        const sa = norm360(m.deg + rot);
+        const sa = norm360(m.deg + rot + star24Rot);
         const p = polar(center.x, center.y, Rout * 0.8, sa);
         return <HaloText key={'s24' + m.c} x={p.x} y={p.y} size={mtFont * 0.78} fill={star24Color(info.ji)}>{star}</HaloText>;
       })}
+      {/* 天星向首（日照最強方向）☀ 標記 */}
+      {starFaceDeg != null && (() => {
+        const sa = norm360(starFaceDeg + rot);
+        const tip = polar(center.x, center.y, Rline * 0.92, sa);
+        return (
+          <g>
+            <line x1={center.x} y1={center.y} x2={tip.x} y2={tip.y} stroke="#e6a700" strokeWidth={unit * 0.007} strokeDasharray={`${unit * 0.02} ${unit * 0.012}`} />
+            <HaloText x={tip.x} y={tip.y} size={unit * 0.05} fill="#c89000">☀</HaloText>
+          </g>
+        );
+      })()}
       {/* 度數（每山中心度），貼近山名內側 */}
       {L.degrees && MOUNTAINS24.map((m) => {
         const sa = norm360(m.deg + rot);
