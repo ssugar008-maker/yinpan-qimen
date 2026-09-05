@@ -2,12 +2,14 @@ import React, { useMemo, useState } from 'react';
 import { buildXkPayload } from '../xuankong/chartPayload.js';
 import { analyze24, M24_ORDER } from '../tianxing/stars24.js';
 import { useStar24Method } from '../tianxing/useStar24Method.js';
+import { useStarFace } from '../tianxing/useStarFace.js';
 import { loadIndoorLayout, buildIndoorRooms } from '../indoor/layoutData.js';
 import { xuanKongChart, annualChart } from '../xuankong/engine.js';
 import { useCloudStore } from '../cloud.js';
 import FengshuiChat from '../FengshuiChat.jsx';
 
 const opp24 = (m) => M24_ORDER[(M24_ORDER.indexOf(m) + 12) % 24];
+const mountainFromDeg = (d) => M24_ORDER[((Math.round((((d % 360) + 360) % 360) / 15)) % 24 + 24) % 24];
 
 // 風水 AI 顧問（獨立分頁）：玄空飛星＋二十四天星＋室內佈局，直接對話。
 // 坐向預設跟「室內」分頁已校準嘅；可改。室內佈局喺坐向一致時自動帶入。
@@ -22,11 +24,15 @@ export default function FengshuiChatTab() {
   const chart = useMemo(() => xuanKongChart(9, sitM, faceM), [sitM, faceM]);
   const flow = useMemo(() => annualChart(new Date().getFullYear()), []);
   const chartPayload = useMemo(() => buildXkPayload(sitM, faceM, { method }), [sitM, faceM, method]);
-  const s24 = useMemo(() => analyze24(sitM, faceM, method), [sitM, faceM, method]);
+  // 二十四天星：跟全域「天星向首」（室內設定嘅日照最強方向）；冇就跟玄空坐向。同室內分頁一致。
+  const globalStarFace = useStarFace();
+  const s24Sit = globalStarFace != null ? mountainFromDeg(globalStarFace + 180) : sitM;
+  const s24Face = globalStarFace != null ? mountainFromDeg(globalStarFace) : faceM;
+  const s24 = useMemo(() => analyze24(s24Sit, s24Face, method), [s24Sit, s24Face, method]);
   const star24 = useMemo(() => ({
-    sit: sitM, face: faceM, method, sitStar: s24.sitStar, faceStar: s24.faceStar,
+    sit: s24Sit, face: s24Face, method, sitStar: s24.sitStar, faceStar: s24.faceStar,
     stars: s24.rows.map((r) => ({ mountain: r.mountain, dir: r.dir, palace: r.palace, palaceWx: r.palaceWx, star: r.star, ji: r.ji, wx: r.wx, group: r.group, governs: r.governs })),
-  }), [s24, sitM, faceM, method]);
+  }), [s24, s24Sit, s24Face, method]);
   // 室內佈局：坐向一致先帶入（唔一致會錯配星曜）
   const indoor = useMemo(() => {
     if (!layout || layout.sitM !== sitM) return null;

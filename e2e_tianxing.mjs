@@ -65,17 +65,17 @@ let stO = await page.evaluate(() => {
   return { cards: [...det.querySelectorAll('.tx-sum-card')].map((c) => c.innerText.replace(/\s+/g, ' ')) };
 });
 ok('坐山 dropdown：坐辛山向乙 → 坐辛進賢（伏位）／向乙屍氣（絕命）', stO.cards.some((c) => c.includes('辛') && c.includes('進賢')) && stO.cards.some((c) => c.includes('乙') && c.includes('屍氣')), stO.cards);
-// 跟返玄空
+// 跟返預設
 await page.evaluate(() => {
   const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
-  [...det.querySelectorAll('button')].find((b) => b.textContent.includes('跟返玄空'))?.click();
+  [...det.querySelectorAll('button')].find((b) => b.textContent.includes('跟返預設'))?.click();
 });
 await sleep(300);
 stO = await page.evaluate(() => {
   const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
   return { cards: [...det.querySelectorAll('.tx-sum-card')].map((c) => c.innerText.replace(/\s+/g, ' ')) };
 });
-ok('跟返玄空 → 返回坐子向午（坐子輔翼）', stO.cards.some((c) => c.includes('子山') && c.includes('輔翼')), stO.cards);
+ok('跟返預設 → 返回坐子向午（坐子輔翼）', stO.cards.some((c) => c.includes('子山') && c.includes('輔翼')), stO.cards);
 // 向首角度輸入：105°（乙）→ 坐辛
 await page.evaluate(() => {
   const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
@@ -97,7 +97,7 @@ ok('向首角度 105° → 坐辛山向乙（向乙屍氣）', stO.cards.some((c
 // 還原
 await page.evaluate(() => {
   const det = [...document.querySelectorAll('details.panel')].find((d) => d.querySelector('.panel-head')?.textContent.includes('二十四天星'));
-  [...det.querySelectorAll('button')].find((b) => b.textContent.includes('跟返玄空'))?.click();
+  [...det.querySelectorAll('button')].find((b) => b.textContent.includes('跟返預設'))?.click();
 });
 await sleep(300);
 
