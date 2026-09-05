@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { STAR24_INFO, star24MapBy, analyze24, STAR24_METHODS, setStar24Method, M24_ORDER } from './stars24.js';
 import { useStar24Method } from './useStar24Method.js';
+import { useStarFace } from './useStarFace.js';
 import StarRing from './StarRing.jsx';
 import { useCloudStore } from '../cloud.js';
 import { aiInterpret } from '../ai.js';
@@ -17,11 +18,14 @@ const mountainFromDeg = (d) => M24_ORDER[((Math.round((((d % 360) + 360) % 360) 
 // 二十四天星：天星環＋自動分析＋AI 分析。給坐山/向首即可（嵌入玄空飛星）。
 export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
   const method = useStar24Method(); // 排盤法：玄道（講堂）／八宅遊年
-  // 天星坐向獨立設定：可直接揀坐山（向＝對山），或輸入向首角度；預設跟玄空坐向
+  // 天星坐向：預設跟全域「天星向首」（室內設定嘅日照最強方向／納光口）；冇就跟玄空坐向。可手動覆蓋。
+  const globalStarFace = useStarFace();
+  const sfSit = globalStarFace != null ? mountainFromDeg(globalStarFace + 180) : null; // 天星坐山＝向首對山
+  const sfFace = globalStarFace != null ? mountainFromDeg(globalStarFace) : null;
   const [sitOverride, setSitOverride] = useState('');
   const [degInput, setDegInput] = useState('');
-  const effSitM = sitOverride || sitM;
-  const effFaceM = sitOverride ? opp24(sitOverride) : faceM;
+  const effSitM = sitOverride || sfSit || sitM;
+  const effFaceM = sitOverride ? opp24(sitOverride) : (sfFace || faceM);
   const applyDeg = () => {
     const d = parseFloat(degInput);
     if (isNaN(d)) return;
@@ -70,16 +74,17 @@ export default function TianXingAnalysis({ sitM, faceM, ringSize = 380 }) {
         <span className="ai-theme-label">天星坐向</span>
         <div className="ai-theme-chips" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <select className="tx-sit-select" value={sitOverride} onChange={(e) => { setSitOverride(e.target.value); setDegInput(''); }}>
-            <option value="">跟玄空（{sitM}山{faceM}向）</option>
+            <option value="">{globalStarFace != null ? `跟天星向首（${sfFace}向 ${Math.round(globalStarFace)}°）` : `跟玄空（${sitM}山${faceM}向）`}</option>
             {M24_ORDER.map((m) => <option key={m} value={m}>坐{m}山向{opp24(m)}</option>)}
           </select>
           <span className="tx-sit-or">或 向首角度</span>
           <input type="number" className="tx-deg-input" value={degInput} placeholder="°" min="0" max="360" step="0.1"
             onChange={(e) => setDegInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') applyDeg(); }} />
           <button type="button" className="ai-theme-chip" onClick={applyDeg} disabled={degInput === '' || isNaN(parseFloat(degInput))}>排盤</button>
-          {sitOverride && <button type="button" className="ai-theme-chip" onClick={() => { setSitOverride(''); setDegInput(''); }}>✕ 跟返玄空</button>}
+          {sitOverride && <button type="button" className="ai-theme-chip" onClick={() => { setSitOverride(''); setDegInput(''); }}>✕ 跟返預設</button>}
         </div>
       </div>
+      {!sitOverride && globalStarFace != null && <div className="xk-note" style={{ marginBottom: 8 }}>二十四天星跟「日照最強方向」（天星向首 {Math.round(globalStarFace)}°，同室內分頁一致）起盤：坐{effSitM}山向{effFaceM}。玄空飛星仍跟坐{sitM}山向{faceM}。</div>}
       {sitOverride && <div className="xk-note" style={{ marginBottom: 8 }}>天星盤而家獨立排：<b>坐{effSitM}山向{effFaceM}</b>（{method === 'bazhai' ? '八宅遊年' : '玄道'}）。玄空飛星仍跟原坐向。</div>}
       {/* 排盤法選擇：玄道（講堂甲乙兩盤）／八宅遊年（每坐山一盤） */}
       <div className="ai-theme-row" style={{ marginBottom: 8 }}>
