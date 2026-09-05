@@ -4,6 +4,7 @@ import { paipan } from './qimen/engine.js';
 import XuanKong from './xuankong/XuanKong.jsx';
 import Indoor from './indoor/Indoor.jsx';
 import QChat from './qchat/QChat.jsx';
+import FengshuiChatTab from './fengshui/FengshuiChatTab.jsx';
 import { DOOR_INFO, STAR_INFO, GOD_INFO, STEM_INFO, PALACE_INFO, WUXING_SHENG, WUXING_KE } from './qimen/symbols.js';
 import { useCloudStore } from './cloud.js';
 import { aiInterpret, AI_MODELS, getAiModelId, setAiModelId, getUsage } from './ai.js';
@@ -1132,12 +1133,14 @@ export default function App() {
         <button type="button" className={`tab${tab === 'stars' ? ' active' : ''}`} onClick={() => setTab('stars')}>九宮飛星</button>
         <button type="button" className={`tab${tab === 'xuankong' ? ' active' : ''}`} onClick={() => setTab('xuankong')}>玄空飛星</button>
         <button type="button" className={`tab${tab === 'indoor' ? ' active' : ''}`} onClick={() => setTab('indoor')}>室內</button>
+        <button type="button" className={`tab${tab === 'fengshui' ? ' active' : ''}`} onClick={() => setTab('fengshui')}>風水 AI</button>
       </div>
 
       {tab === 'months' && <MonthsPanel />}
       {tab === 'stars' && <StarsPanel />}
       {tab === 'xuankong' && <XuanKong chartLib={chartLib} />}
       {tab === 'indoor' && <Indoor key={indoorKey} onGotoXuanKong={() => setTab('xuankong')} chartLib={chartLib} />}
+      {tab === 'fengshui' && <FengshuiChatTab />}
       {tab === 'qchat' && <QChat />}
 
       {tab === 'chart' && (<>

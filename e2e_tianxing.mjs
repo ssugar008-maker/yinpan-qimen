@@ -163,25 +163,13 @@ st = await page.evaluate(() => {
 ok('追問回答顯示', st.a && st.a.includes('天星回答2'), st.a);
 ok('對話串存檔', Object.values(st.lib).some((v) => v && Array.isArray(v.thread) && v.thread.length === 1 && v.thread[0].q === '大門開坤方好嗎'), Object.keys(st.lib));
 
-console.log('\n[3c] 玄空分頁：風水 AI 顧問（直接對話）');
-const xkChat0 = await page.evaluate(() => {
-  const sec = document.querySelector('.fschat-section');
-  if (!sec) return null;
-  const ta = sec.querySelector('.fschat-input');
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-  setter.call(ta, '呢個坐向整體用咩色系好？'); ta.dispatchEvent(new Event('input', { bubbles: true }));
-  return { examples: sec.querySelectorAll('.fschat-ex-chip').length };
-});
-ok('玄空分頁有風水 AI 顧問（含示例問題）', !!xkChat0 && xkChat0.examples >= 3, xkChat0);
-await page.evaluate(() => [...document.querySelectorAll('.fschat-section button')].find((b) => b.textContent.trim() === '送出')?.click());
-await sleep(500);
-const xkChatSt = await page.evaluate(() => ({
-  user: document.querySelectorAll('.fschat-section .qc-msg.user').length,
-  ai: document.querySelectorAll('.fschat-section .qc-msg.ai').length,
-  aiText: document.querySelector('.fschat-section .qc-msg.ai .qc-bubble')?.innerText || '',
+console.log('\n[3c] 玄空分頁：直接對話已集中到「風水 AI」分頁');
+const xkChat0 = await page.evaluate(() => ({
+  chatHere: !!document.querySelector('.fschat-section'),
+  pointer: [...document.querySelectorAll('.xk-note')].some((x) => x.textContent.includes('風水 AI')),
 }));
-ok('玄空顧問：送出 → 一問一答', xkChatSt.user === 1 && xkChatSt.ai === 1, xkChatSt);
-ok('玄空顧問：AI 回答顯示（mock）', xkChatSt.aiText.includes('天星回答'), xkChatSt.aiText.slice(0, 50));
+ok('玄空分頁唔再有對話（已集中）', !xkChat0.chatHere, xkChat0);
+ok('玄空分頁有「去風水 AI 分頁」提示', xkChat0.pointer, xkChat0);
 
 console.log('\n[4] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);

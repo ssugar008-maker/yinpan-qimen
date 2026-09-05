@@ -52,31 +52,18 @@ await page.evaluateOnNewDocument(`localStorage.setItem('mo_indoor_v1', '${JSON.s
 await page.goto(URL, { waitUntil: 'networkidle2' });
 await page.waitForSelector('.tabs');
 
-console.log('\n[1] 室內分頁：AI 佈局分析按鈕');
+console.log('\n[1] 室內分頁：房間載入＋AI 已集中到「風水 AI」分頁');
 await (await page.$$("xpath///button[contains(@class,'tab') and contains(text(),'室內')]"))[0].click();
 await page.waitForSelector('.indoor');
 await sleep(600);
 let st = await page.evaluate(() => ({
   rooms: document.querySelectorAll('.indoor-room').length,
   aiBtn: !!document.querySelector('.indoor-ai .ai-btn'),
-  aiBtnText: document.querySelector('.indoor-ai .ai-btn')?.textContent.trim() || null,
+  fsPointer: [...document.querySelectorAll('.indoor-method-hint')].some((x) => x.textContent.includes('風水 AI')),
 }));
 ok('兩間房載入', st.rooms === 2, st.rooms);
-ok('AI 佈局分析按鈕出現', st.aiBtn && st.aiBtnText.includes('AI 佈局分析'), st.aiBtnText);
-
-console.log('\n[2] 跑 AI 佈局分析（模擬）');
-await page.evaluate(() => document.querySelector('.indoor-ai .ai-btn').click());
-await sleep(500);
-st = await page.evaluate(() => ({
-  result: document.querySelector('.indoor-ai .ai-result')?.innerText.trim() || null,
-  saved: !!document.querySelector('.indoor-ai .ai-saved'),
-  hasFu: !!document.querySelector('.indoor-ai .fu-input'),
-}));
-ok('分析結果顯示', st.result && st.result.includes('佈局分析'), st.result);
-ok('已存檔＋可追問', st.saved && st.hasFu);
-ok('payload 係 indoorLayout 且有兩間房', lastIndoor && lastIndoor.task === 'indoorLayout' && lastIndoor.indoor.rooms.length === 2, lastIndoor && lastIndoor.task);
-ok('房間帶宮位組合（坎宮/離宮）', lastIndoor && lastIndoor.indoor.rooms[0].palaces.some((p) => p.palaceName === '坎') && lastIndoor.indoor.rooms[1].palaces.some((p) => p.palaceName === '離'), lastIndoor && lastIndoor.indoor.rooms.map((r) => r.palaces.map((p) => p.palaceName)));
-ok('房間帶家具', lastIndoor && lastIndoor.indoor.rooms[0].furniture.join(',') === '床,衣櫃', lastIndoor && lastIndoor.indoor.rooms[0].furniture);
+ok('室內唔再有 AI 佈局分析按鈕（已集中）', !st.aiBtn, st.aiBtn);
+ok('室內有「去風水 AI 分頁」提示', st.fsPointer, st.fsPointer);
 
 console.log('\n[3] 玄空 AI 自動帶入已標注房間（坐向一致）');
 await page.evaluate(() => window.scrollTo(0, 0));
@@ -123,10 +110,6 @@ const starAtZi = await page.evaluate(() => {
   return texts.map((x) => x.textContent).join('|');
 });
 ok('天星環重排（坐酉後子山唔再係天錢）', starAtZi.includes('屍氣'), starAtZi.slice(0, 120));
-// 跑室內 AI → payload 帶天星向首
-await page.evaluate(() => document.querySelector('.indoor-ai .ai-btn').click());
-await sleep(500);
-ok('室內 AI payload 帶天星向首（卯90°）＋坐山（酉）', lastIndoor && lastIndoor.indoor.starFace === '卯' && lastIndoor.indoor.starFaceDeg === 90 && lastIndoor.indoor.starSit === '酉', lastIndoor && { sf: lastIndoor.indoor.starFace, sd: lastIndoor.indoor.starFaceDeg, ss: lastIndoor.indoor.starSit });
 // ☀ 點光位模式：點平面圖中心正東 → 天星向首≈90°
 await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('點光位')).click());
 await sleep(150);
@@ -142,37 +125,46 @@ await sleep(200);
 sf = await page.evaluate(() => ({ marker: [...document.querySelectorAll('.indoor-canvas-wrap svg text')].some((x) => x.textContent === '☀'), val: document.querySelector('.indoor-starface input[type=number]')?.value }));
 ok('清除後 ☀ 標記消失', !sf.marker && (sf.val === '' || sf.val == null), sf);
 
-console.log('\n[4b] 排盤法選擇（八宅遊年預設／玄道）—— 每坐向出唔同盤，逐山對羅盤');
-// 預設八宅遊年：坐子（坎宅）→ 坎宮伏位 → 正北房間星＝輔翼
-await page.evaluate(() => document.querySelector('.indoor-ai .ai-btn').click());
-await sleep(500);
-let mStar = lastIndoor && lastIndoor.indoor.rooms[0].palaces[0].star;
-ok('八宅遊年（預設）：正北房間星＝輔翼（伏位組）', mStar === '輔翼', mStar);
-ok('八宅遊年 payload 標 method bazhai', lastIndoor && lastIndoor.indoor.method === 'bazhai', lastIndoor && lastIndoor.indoor.method);
-// 切玄道（講堂立極尺）
-await page.evaluate(() => [...document.querySelectorAll('.indoor-starface .seg button')].find((b) => b.textContent.includes('玄道')).click());
-await sleep(400);
-await page.evaluate(() => document.querySelector('.indoor-ai .ai-btn').click());
-await sleep(500);
-mStar = lastIndoor && lastIndoor.indoor.rooms[0].palaces[0].star;
-ok('玄道排法：正北房間星＝天錢（唔同咗）', mStar === '天錢', mStar);
-ok('玄道 payload 標 method xuandao', lastIndoor && lastIndoor.indoor.method === 'xuandao', lastIndoor && lastIndoor.indoor.method);
-// 切返八宅遊年，改天星向首（坐山）→ 星位變（每坐向唔同盤）
-await page.evaluate(() => [...document.querySelectorAll('.indoor-starface .seg button')].find((b) => b.textContent.includes('八宅遊年')).click());
+console.log('\n[4b] 風水 AI 分頁：對話＋排盤法');
+await page.evaluate(() => { localStorage.setItem('mo_star24_method', 'bazhai'); window.dispatchEvent(new Event('mo-star24-method')); });
+await page.evaluate(() => window.scrollTo(0, 0));
+await page.evaluate(() => [...document.querySelectorAll('.tab')].find((b) => b.textContent.includes('風水 AI')).click());
+await sleep(800);
+const sendFs = async (q) => {
+  await page.evaluate((qq) => {
+    const ta = document.querySelector('.fschat-input');
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(ta, qq); ta.dispatchEvent(new Event('input', { bubbles: true }));
+  }, q);
+  await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '送出')?.click());
+  await sleep(500);
+};
+// 八宅遊年（預設）：第一條
+await sendFs('整體點樣？');
+const ziB = lastChat && lastChat.star24 && lastChat.star24.stars.find((s) => s.mountain === '子');
+ok('八宅遊年（預設）：子山＝輔翼（坎宅伏位）', ziB && ziB.star === '輔翼' && lastChat.star24.method === 'bazhai', ziB && ziB.star);
+ok('xkChat 帶室內佈局（坐向一致，2 間房）', !!(lastChat && lastChat.indoor && lastChat.indoor.rooms && lastChat.indoor.rooms.length === 2), lastChat && lastChat.indoor && lastChat.indoor.rooms && lastChat.indoor.rooms.length);
+// 第二條（同排盤法）→ 多輪
+await sendFs('雪櫃放邊個山好？');
+const fsTabSt = await page.evaluate(() => ({
+  user: document.querySelectorAll('.fschat .qc-msg.user').length,
+  ai: document.querySelectorAll('.fschat .qc-msg.ai').length,
+  saved: JSON.parse(localStorage.getItem('fs_chat_tab_v1') || '{}'),
+}));
+ok('風水 AI 分頁：多輪對話（兩問兩答）', fsTabSt.user === 2 && fsTabSt.ai === 2, { user: fsTabSt.user, ai: fsTabSt.ai });
+ok('風水 AI 分頁：對話存檔（localStorage）', Object.values(fsTabSt.saved).some((v) => v && Array.isArray(v.thread) && v.thread.length === 2), Object.keys(fsTabSt.saved));
+ok('xkChat payload 有玄空盤＋天星＋室內逐山', !!(lastChat && lastChat.task === 'xkChat' && Array.isArray(lastChat.chart?.palaces) && lastChat.chart.palaces.length === 9 && Array.isArray(lastChat.star24?.stars) && lastChat.star24.stars.length === 24 && Array.isArray(lastChat.indoor?.rooms) && lastChat.indoor.rooms[0]?.byMountain?.length > 0), lastChat && { task: lastChat.task });
+ok('xkChat 多輪帶 followups', !!(lastChat && Array.isArray(lastChat.followups) && lastChat.followups.length === 1 && lastChat.question === '雪櫃放邊個山好？'), lastChat && { q: lastChat.question, fu: lastChat.followups?.length });
+// 切玄道 → 子山＝天錢
+await page.evaluate(() => { localStorage.setItem('mo_star24_method', 'xuandao'); window.dispatchEvent(new Event('mo-star24-method')); });
 await sleep(300);
-await page.evaluate(() => {
-  const i = document.querySelector('.indoor-starface input[type=number]');
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-  setter.call(i, '90'); i.dispatchEvent(new Event('input', { bubbles: true })); // 天星向首卯 → 坐酉
-});
+await sendFs('玄道排法點樣？');
+const ziX = lastChat && lastChat.star24 && lastChat.star24.stars.find((s) => s.mountain === '子');
+ok('玄道：子山＝天錢（唔同咗）', ziX && ziX.star === '天錢' && lastChat.star24.method === 'xuandao', ziX && ziX.star);
+// 還原八宅遊年＋返室內
+await page.evaluate(() => { localStorage.setItem('mo_star24_method', 'bazhai'); window.dispatchEvent(new Event('mo-star24-method')); });
+await page.evaluate(() => [...document.querySelectorAll('.tab')].find((b) => b.textContent.includes('室內')).click());
 await sleep(400);
-await page.evaluate(() => document.querySelector('.indoor-ai .ai-btn').click());
-await sleep(500);
-const mStar2 = lastIndoor && lastIndoor.indoor.rooms[0].palaces[0].star;
-ok('八宅遊年＋天星坐酉：正北房間星再變（每坐向唔同盤）', mStar2 !== '輔翼' && mStar2 !== '天錢', mStar2);
-// 還原
-await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === '清除' && x.closest('.indoor-starface')); if (b) b.click(); });
-await sleep(200);
 
 console.log('\n[4c] 玄空分頁天星區都有排盤法選擇');
 await page.evaluate(() => window.scrollTo(0, 0));
@@ -187,47 +179,6 @@ ok('玄空天星區有排盤法選擇', txMethod && txMethod.has.some((x) => x.i
 // 還原室內分頁
 await page.evaluate(() => [...document.querySelectorAll('.tab')].find((b) => b.textContent.includes('室內')).click());
 await sleep(500);
-
-console.log('\n[4e] 風水 AI 顧問（多輪對話）');
-const chatThere = await page.evaluate(() => !!document.querySelector('.fschat-section'));
-ok('風水 AI 顧問區出現', chatThere);
-const exChips = await page.evaluate(() => [...document.querySelectorAll('.fschat-ex-chip')].map((b) => b.textContent.trim()));
-ok('有示例問題 chips', exChips.length >= 3, exChips);
-// 送出第一條問題 → AI 回答（mock）
-await page.evaluate(() => {
-  const ta = document.querySelector('.fschat-input');
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-  setter.call(ta, '廚房整體用咩色好？'); ta.dispatchEvent(new Event('input', { bubbles: true }));
-});
-await sleep(150);
-await page.evaluate(() => [...document.querySelectorAll('.fschat-section button')].find((b) => b.textContent.trim() === '送出').click());
-await sleep(500);
-let chatSt = await page.evaluate(() => ({
-  user: document.querySelectorAll('.fschat-section .qc-msg.user').length,
-  ai: document.querySelectorAll('.fschat-section .qc-msg.ai').length,
-  aiText: document.querySelector('.fschat-section .qc-msg.ai .qc-bubble')?.innerText || '',
-}));
-ok('送出問題 → 用戶+AI 訊息各一', chatSt.user === 1 && chatSt.ai === 1, chatSt);
-ok('AI 回答顯示（mock）', chatSt.aiText.includes('佈局分析'), chatSt.aiText.slice(0, 60));
-// 多輪：再問一條
-await page.evaluate(() => {
-  const ta = document.querySelector('.fschat-input');
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-  setter.call(ta, '雪櫃放邊個山好？'); ta.dispatchEvent(new Event('input', { bubbles: true }));
-});
-await sleep(150);
-await page.evaluate(() => [...document.querySelectorAll('.fschat-section button')].find((b) => b.textContent.trim() === '送出').click());
-await sleep(500);
-chatSt = await page.evaluate(() => ({
-  user: document.querySelectorAll('.fschat-section .qc-msg.user').length,
-  ai: document.querySelectorAll('.fschat-section .qc-msg.ai').length,
-  saved: JSON.parse(localStorage.getItem('fs_chat_v1') || '{}'),
-}));
-ok('多輪對話（兩問兩答）', chatSt.user === 2 && chatSt.ai === 2, { user: chatSt.user, ai: chatSt.ai });
-ok('對話存檔（localStorage，兩條）', Object.values(chatSt.saved).some((v) => v && Array.isArray(v.thread) && v.thread.length === 2), Object.keys(chatSt.saved));
-// xkChat payload：有玄空全盤（9宮）＋二十四天星（24山）＋室內房間（逐山）
-ok('xkChat payload 有玄空盤＋天星＋室內逐山', !!(lastChat && lastChat.task === 'xkChat' && Array.isArray(lastChat.chart?.palaces) && lastChat.chart.palaces.length === 9 && Array.isArray(lastChat.star24?.stars) && lastChat.star24.stars.length === 24 && Array.isArray(lastChat.indoor?.rooms) && lastChat.indoor.rooms[0]?.byMountain?.length > 0), lastChat && { task: lastChat.task, palaces: lastChat.chart?.palaces?.length, stars: lastChat.star24?.stars?.length, rooms: lastChat.indoor?.rooms?.length, byMtn: lastChat.indoor?.rooms?.[0]?.byMountain?.length });
-ok('xkChat 多輪帶 followups', !!(lastChat && Array.isArray(lastChat.followups) && lastChat.followups.length === 1 && lastChat.question === '雪櫃放邊個山好？'), lastChat && { q: lastChat.question, fu: lastChat.followups?.length });
 
 console.log('\n[4d] ☀點光位唔會再落加點（重疊修正）');
 const pinsBefore = await page.evaluate(() => document.querySelectorAll('.indoor-canvas-wrap svg circle[fill="#ff8800"]').length);
@@ -262,10 +213,9 @@ await page.evaluate(() => {
 await sleep(300);
 pctTxt = await page.evaluate(() => document.querySelector('.indoor-room .indoor-room-pct')?.innerText || '');
 ok('手動指定乾亥壬 → 佔比平均（33%）', pctTxt.includes('乾') && pctTxt.includes('亥') && pctTxt.includes('壬') && pctTxt.includes('33%'), pctTxt);
-// AI 佈局分析 payload 用 override（乾亥壬）
-await page.evaluate(() => document.querySelector('.indoor-ai .ai-btn').click());
-await sleep(500);
-ok('indoorLayout payload 用手動山（乾亥壬）＋帶佔比', !!(lastIndoor && lastIndoor.indoor.rooms[0].mountains.join('') === '乾亥壬' && lastIndoor.indoor.rooms[0].byMountain[0].pct != null), lastIndoor && { m: lastIndoor.indoor.rooms[0].mountains, pct: lastIndoor.indoor.rooms[0].byMountain[0]?.pct });
+// 手動指定山會存入平面圖佈局（風水 AI 分頁會用到）
+const savedMtns = await page.evaluate(() => { const l = JSON.parse(localStorage.getItem('mo_indoor_v1')); return l.rooms[0].manualMountains; });
+ok('手動指定山存入佈局（乾亥壬）', savedMtns && savedMtns.join('') === '乾亥壬', savedMtns);
 // 還原：清除手動（用返自動）
 await page.evaluate(() => {
   const picker = document.querySelector('.indoor-mtn-picker');
