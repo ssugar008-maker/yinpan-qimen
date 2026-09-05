@@ -14,6 +14,7 @@ import IndoorQuickView from '../indoor/IndoorQuickView.jsx';
 import ExportDialog from '../ExportDialog.jsx';
 import { star24MapBy, STAR24_INFO, PALACE_MOUNTAINS24, analyze24 } from '../tianxing/stars24.js';
 import { useStar24Method } from '../tianxing/useStar24Method.js';
+import { useStarFace } from '../tianxing/useStarFace.js';
 import { loadIndoorLayout, buildIndoorRooms } from '../indoor/layoutData.js';
 
 // AI 分析主題（與 api/interpret.js 的 XK_THEMES 對應；「綜合」＝原有整體解讀，「自訂」＝自由提問）
@@ -130,8 +131,12 @@ export default function XuanKong({ chartLib }) {
 
   // 24 天星盤（依坐山起盤），並整理出每宮三山的天星
   const star24Method = useStar24Method(); // 天星排盤法（玄道／八宅遊年），全域共用
-  const starMap = useMemo(() => star24MapBy(star24Method, sitM), [star24Method, sitM]);
-  const s24 = useMemo(() => analyze24(sitM, faceM, star24Method), [sitM, faceM, star24Method]);
+  // 二十四天星跟全域「天星向首」（室內設定嘅日照最強方向）；冇就跟玄空坐向。同室內分頁一致。
+  const globalStarFace = useStarFace();
+  const s24Sit = globalStarFace != null ? mountainFromDegree(globalStarFace + 180) : sitM;
+  const s24Face = globalStarFace != null ? mountainFromDegree(globalStarFace) : faceM;
+  const starMap = useMemo(() => star24MapBy(star24Method, s24Sit), [star24Method, s24Sit]);
+  const s24 = useMemo(() => analyze24(s24Sit, s24Face, star24Method), [s24Sit, s24Face, star24Method]);
   const palaceStars24 = useMemo(() => {
     const out = {};
     GRID.forEach((p) => {
@@ -683,11 +688,11 @@ export default function XuanKong({ chartLib }) {
         </div>
       </details>
 
-      {/* 二十四天星（與玄空飛星共用同一坐向） */}
+      {/* 二十四天星（跟天星向首／日照最強方向起盤） */}
       <details className="panel collapsible" open ref={txRef}>
-        <summary className="panel-head">二十四天星（{sitM}山{faceM}向）</summary>
+        <summary className="panel-head">二十四天星（{globalStarFace != null ? `天星向首 ${Math.round(globalStarFace)}°` : `${sitM}山${faceM}向`}）</summary>
         <div className="panel-body">
-          <div className="xk-note" style={{ marginBottom: 8 }}>本區與上方玄空飛星<strong>共用同一坐向</strong>（坐{sitM}山・向{faceM}，羅盤度數 {degree}°），無需重複輸入；改坐向此處會同步更新。二十四天星隨坐向起盤，輔助判斷各方吉凶宜忌。</div>
+          <div className="xk-note" style={{ marginBottom: 8 }}>二十四天星<strong>跟「天星向首」（日照最強方向／納光口）起盤</strong>，同「室內」分頁一致；喺「室內」分頁設定天星向首就會同步。{globalStarFace == null && `未設天星向首，暫跟玄空坐向（坐${sitM}山・向${faceM}）。`}玄空飛星（上方）仍跟坐{sitM}山向{faceM}。</div>
           <TianXingAnalysis sitM={sitM} faceM={faceM} />
         </div>
       </details>

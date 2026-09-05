@@ -5,6 +5,7 @@ import {
 import { analyzeFloorplan } from './analyze.js';
 import { star24MapBy, analyze24, STAR24_INFO, PALACE_MOUNTAINS24, STAR24_METHODS, setStar24Method } from '../tianxing/stars24.js';
 import { useStar24Method } from '../tianxing/useStar24Method.js';
+import { setStarFace } from '../tianxing/useStarFace.js';
 import { xuanKongChart, annualChart, starPair, PALACE_GUA, PALACE_DIR, PALACE_WX, GRID, STAR_NAME, STAR_WX, remedyText, lifeGua, bazhai, GUA_NAME, EAST4, BAZHAI_GOOD } from '../xuankong/engine.js';
 import { buildIndoorRooms } from './layoutData.js';
 
@@ -466,6 +467,8 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   const star24 = starSitC ? star24MapBy(star24Method, starSitC) : null;
   // 設咗天星向首自動顯示天星環
   useEffect(() => { if (starFaceDeg != null) setLayers((s) => (s.stars24 ? s : { ...s, stars24: true })); }, [starFaceDeg]);
+  // 天星向首同步到全域（玄空分頁＋風水 AI 分頁嘅二十四天星都跟佢，保證一致）
+  useEffect(() => { setStarFace(starFaceDeg); }, [starFaceDeg]);
   // 玄空盤（9運）＋流年，用於房間吉凶
   const flowYearNow = new Date().getFullYear();
   const xkChart = useMemo(() => (sitM ? xuanKongChart(9, sitM.c, faceM.c) : null), [sitM, faceM]);
