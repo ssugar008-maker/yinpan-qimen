@@ -14,8 +14,6 @@ Object.entries(PALACE_MOUNTAINS24).forEach(([p, ms]) => ms.forEach((m) => { MOUN
 import CompassOverlay, { HaloText } from './CompassOverlay.jsx';
 import { aiInterpret } from '../ai.js';
 import { useCloudStore } from '../cloud.js';
-import FollowUpChat from '../FollowUp.jsx';
-import FengshuiChat from '../FengshuiChat.jsx';
 import AiText from '../AiText.jsx';
 
 const STORE_KEY = 'mo_indoor_v1';
@@ -237,6 +235,15 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     });
     return best;
   };
+  // 搵最近嘅區域草稿點（標房細調：描緊嗰陣可以拖返啲點）
+  const nearestDraftPoint = (pt) => {
+    let best = -1, bestD = HIT_R * 1.2;
+    areaDraft.forEach((p, k) => {
+      const d = Math.hypot(p.x - pt.x, p.y - pt.y);
+      if (d < bestD) { bestD = d; best = k; }
+    });
+    return best;
+  };
   // 搵最近嘅家具/門標記（微調位置用）
   const nearestFeature = (pt) => {
     let best = -1, bestD = HIT_R;
@@ -269,7 +276,7 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   const onPointerDown = (e) => {
     if (!img || mode === 'view') return;
     const pt = toSvg(e);
-    drag.current = { idx: null, downPt: pt, moved: false, roomIdx: null, vertexIdx: null, origPts: null, origXY: null, featureIdx: null, rotating: false, origFeatureXY: null };
+    drag.current = { idx: null, downPt: pt, moved: false, roomIdx: null, vertexIdx: null, origPts: null, origXY: null, featureIdx: null, rotating: false, origFeatureXY: null, draftIdx: null };
     if (mode === 'pin') {
       const i = nearestPin(pt);
       if (i >= 0) {
@@ -324,6 +331,13 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
         drag.current.origFeatureXY = { x: features[fi].x, y: features[fi].y };
         try { e.target.setPointerCapture(e.pointerId); } catch {}
       }
+    } else if (mode === 'room' && roomSubMode === 'area') {
+      // 標房細調：描緊區域嗰陣，撳到草稿點就拖佢（唔使完成先改）
+      const di = nearestDraftPoint(pt);
+      if (di >= 0) {
+        drag.current.draftIdx = di;
+        try { e.target.setPointerCapture(e.pointerId); } catch {}
+      }
     } else if (mode === 'manual') {
       setManualCenter(pt);
       setCenterMethod('manual');
@@ -345,6 +359,9 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     if (d.downPt && Math.hypot(pt.x - d.downPt.x, pt.y - d.downPt.y) > HIT_R * 0.4) d.moved = true;
     if (d.idx != null) {
       setPins((ps) => ps.map((p, i) => (i === d.idx ? pt : p)));
+    } else if (d.draftIdx != null) {
+      // 標房細調：拖草稿點
+      setAreaDraft((dr) => dr.map((p, k) => (k === d.draftIdx ? { x: Math.round(pt.x), y: Math.round(pt.y) } : p)));
     } else if (d.featureIdx != null) {
       if (d.rotating) {
         // 拖旋轉手柄 → 精密改方向（圖像角）
@@ -417,8 +434,8 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
         if (!d.moved) setSelRoom((s) => (s === d.roomIdx ? null : d.roomIdx));
       } else if (!d.moved) {
         if (roomSubMode === 'area') {
-          // 區域模式：逐點描房間範圍
-          setAreaDraft((dr) => [...dr, { x: Math.round(pt.x), y: Math.round(pt.y) }]);
+          // 區域模式：逐點描房間範圍（拖緊草稿點就唔加新點）
+          if (d.draftIdx == null) setAreaDraft((dr) => [...dr, { x: Math.round(pt.x), y: Math.round(pt.y) }]);
         } else {
           // 單點模式：點空白位新增房間（點到既有房會喺 pointerdown 設咗 roomIdx）
           setRooms((rs) => [...rs, { x: Math.round(pt.x), y: Math.round(pt.y), type: '睡房', furniture: [] }]);
@@ -426,7 +443,7 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
         }
       }
     }
-    drag.current = { idx: null, downPt: null, moved: false, roomIdx: null, vertexIdx: null, origPts: null, origXY: null };
+    drag.current = { idx: null, downPt: null, moved: false, roomIdx: null, vertexIdx: null, origPts: null, origXY: null, featureIdx: null, rotating: false, origFeatureXY: null, draftIdx: null };
   };
 
   const applyRefDegree = () => {
@@ -501,16 +518,6 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     return worst.xk ? worst.xk.combo.t : (worst.starInfo ? worst.starInfo.ji : '平');
   };
 
-  // ── AI 佈局分析＋化解（對照玄空盤評估已標注嘅房間）── 雲端存檔 ns 'indoor'
-  const INDOOR_AI_KEY = 'indoor_ai_v1';
-  const [indoorAiLib, setIndoorAiLib] = useCloudStore('indoor', INDOOR_AI_KEY, {});
-  const [layoutAi, setLayoutAi] = useState({ loading: false, text: '', error: '' });
-  const indoorAiKey = sitM ? `${sitM.c}${faceM.c}|${rooms.length}` : '';
-  const indoorEntry = (v) => (typeof v === 'string' ? { text: v, thread: [] } : (v || null));
-  useEffect(() => { setLayoutAi({ loading: false, text: (indoorEntry(indoorAiLib[indoorAiKey]) || {}).text || '', error: '' }); }, [indoorAiKey, indoorAiLib]);
-  const indoorRoomsForAi = useMemo(() => (sitM && xkChart && center ? buildIndoorRooms({ sitM: sitM.c, starSit: starSitC, method: star24Method, center, rot, rooms }, xkChart, xkFlow) : []), [sitM, xkChart, xkFlow, center, rot, rooms, starSitC, star24Method]);
-  const indoorPayload = sitM ? { task: 'indoorLayout', indoor: { sit: sitM.c, face: faceM.c, period: 9, flowYear: flowYearNow, starFace: starFaceC, starFaceDeg, starSit: starSitC, method: star24Method, rooms: indoorRoomsForAi } } : null;
-
   // ── AI 讀平面圖（vision）：自動搵房間＋位置，用家確認後一鍵標好 ──
   const [fpAi, setFpAi] = useState({ loading: false, rooms: null, error: '' });
   const runFpAi = async () => {
@@ -537,55 +544,6 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
     if (detected.length) setRooms((rs) => [...rs, ...detected]);
     if (feats.length) setFeatures((fs) => [...fs, ...feats]);
     setFpAi({ loading: false, rooms: null, features: null, error: '' });
-  };
-
-  // ── 風水 AI 顧問（多輪對話）：玄空全盤＋二十四天星＋室內逐山佈局 ──
-  const [chatStyle, setChatStyle] = useState('白話'); // 白話／書面
-  const [chatDetail, setChatDetail] = useState('適中'); // 簡潔／適中／詳細
-  // 玄空全盤（xkHead「整體」格式）
-  const chatChart = useMemo(() => {
-    if (!sitM || !xkChart) return null;
-    return {
-      sit: sitM.c, face: faceM.c, period: 9, flowYear: flowYearNow, flowStar: xkFlow[5], qiXing: '下卦', types: [],
-      palaces: GRID.map((p) => {
-        const c = starPair(xkChart.sG[p], xkChart.fG[p]);
-        const s = xkChart.sG[p], f = xkChart.fG[p];
-        return {
-          name: PALACE_GUA[p], dir: PALACE_DIR[p], wx: PALACE_WX[p],
-          role: p === xkChart.sitPalace ? '坐山' : p === xkChart.facePalace ? '向首' : p === 5 ? '中宮' : '',
-          shan: s, shanName: STAR_NAME[s], shanWx: STAR_WX[s],
-          xiang: f, xiangName: STAR_NAME[f], xiangWx: STAR_WX[f],
-          yun: xkChart.pG[p], yunName: STAR_NAME[xkChart.pG[p]],
-          flow: xkFlow[p], flowName: STAR_NAME[xkFlow[p]],
-          combo: c.n, ji: c.t, comboDesc: c.d, remedy: remedyText(c.r),
-        };
-      }),
-    };
-  }, [sitM, faceM, xkChart, xkFlow]);
-  // 二十四天星盤（跟天星向首／排盤法）
-  const chatStar24 = useMemo(() => {
-    if (!starSitC) return null;
-    const ana = analyze24(starSitC, starFaceC, star24Method);
-    return {
-      sit: starSitC, face: starFaceC, sitStar: ana.sitStar, faceStar: ana.faceStar, method: star24Method,
-      stars: ana.rows.map((r) => ({ mountain: r.mountain, dir: r.dir, palace: r.palace, palaceWx: r.palaceWx, star: r.star, ji: r.ji, wx: r.wx, group: r.group, governs: r.governs })),
-    };
-  }, [starSitC, starFaceC, star24Method]);
-  const fsChatPayload = chatChart ? { task: 'xkChat', chart: chatChart, star24: chatStar24, indoor: { rooms: indoorRoomsForAi }, chatStyle, chatDetail } : null;
-  // 對話存檔（本坐向＋天星向首＋排盤法）：本機＋雲端
-  const FS_CHAT_KEY = 'fs_chat_v1';
-  const [fsChatLib, setFsChatLib] = useCloudStore('indoor', FS_CHAT_KEY, {});
-  const fsChatKey = sitM ? `${sitM.c}${faceM.c}|${starSitC || ''}|${star24Method}` : '';
-  const fsThread = (fsChatLib[fsChatKey] && fsChatLib[fsChatKey].thread) || [];
-  const fsAppend = (qa) => setFsChatLib((lib) => ({ ...lib, [fsChatKey]: { thread: [...((lib[fsChatKey] || {}).thread || []), qa], ts: Date.now() } }));
-  const fsClear = () => setFsChatLib((lib) => ({ ...lib, [fsChatKey]: { thread: [], ts: Date.now() } }));
-  const runLayoutAi = async () => {
-    setLayoutAi({ loading: true, text: '', error: '' });
-    try {
-      const { text } = await aiInterpret(indoorPayload);
-      setLayoutAi({ loading: false, text, error: '' });
-      if (text) setIndoorAiLib((lib) => ({ ...lib, [indoorAiKey]: { text, thread: (indoorEntry(lib[indoorAiKey]) || {}).thread || [], ts: Date.now() } }));
-    } catch (e) { setLayoutAi({ loading: false, text: '', error: String((e && e.message) || e) }); }
   };
 
   // persist computed centre + facing so the 玄空 quick-view can render without re-detecting
@@ -957,11 +915,12 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
               {roomSubMode === 'area' && areaDraft.length > 0 && (
                 <>
                   <button type="button" className="indoor-area-done" onClick={() => { setRooms((rs) => [...rs, { pts: areaDraft, type: '睡房', furniture: [] }]); setSelRoom(rooms.length); setAreaDraft([]); }}>✓ 完成（{areaDraft.length}點）</button>
+                  <button type="button" className="indoor-area-cancel" onClick={() => setAreaDraft((dr) => dr.slice(0, -1))}>− 刪最後點</button>
                   <button type="button" className="indoor-area-cancel" onClick={() => setAreaDraft([])}>✕ 取消</button>
                 </>
               )}
             </div>
-            {roomSubMode === 'area' && <div className="indoor-method-hint">在平面圖逐點描出房間範圍（至少 2-3 點成區域），完成後會分析涵蓋的所有山。</div>}
+            {roomSubMode === 'area' && <div className="indoor-method-hint">在平面圖逐點描出房間範圍；<b>描緊嗰陣可以直接拖啲藍點調整</b>，撳錯咗可以「− 刪最後點」。完成後會分析涵蓋的所有山。</div>}
 
             {/* AI 讀平面圖：自動搵房間＋位置，確認後一鍵標好 */}
             <div className="indoor-fpai">
@@ -1177,50 +1136,10 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
               </div>
             )}
 
-            {/* AI 佈局分析＋化解 */}
-            {rooms.length > 0 && sitM && (
-              <div className="indoor-ai">
-                <button type="button" className="ai-btn" onClick={runLayoutAi} disabled={layoutAi.loading || !indoorRoomsForAi.length}>
-                  {layoutAi.loading ? 'AI 分析中…' : (layoutAi.text ? '↻ 重新分析（已存檔）' : '✨ AI 佈局分析＋化解')}
-                </button>
-                {layoutAi.error && <div className="ai-error">{layoutAi.error}</div>}
-                {layoutAi.text && <div className="ai-result"><AiText text={layoutAi.text} /></div>}
-                {layoutAi.text && <div className="ai-saved">✓ 已存檔（本坐向＋房間數），重整頁面亦保留</div>}
-                {layoutAi.text && (
-                  <FollowUpChat
-                    basePayload={indoorPayload}
-                    thread={(indoorEntry(indoorAiLib[indoorAiKey]) || {}).thread || []}
-                    onAppend={(qa) => setIndoorAiLib((lib) => { const e0 = indoorEntry(lib[indoorAiKey]) || { text: layoutAi.text }; return { ...lib, [indoorAiKey]: { ...e0, text: e0.text || layoutAi.text, thread: [...(e0.thread || []), qa] } }; })}
-                    placeholder="追問：就呢個佈局再問（例：主人房點化解）…"
-                  />
-                )}
-                <div className="sym-combo-note">（AI 對照玄空盤評估你標好嘅房間：邊間啱位、邊間唔啱位、應該點調、點化解）</div>
-              </div>
-            )}
-
-            {/* 風水 AI 顧問（多輪對話）：玄空全盤＋二十四天星＋室內逐山佈局 */}
-            {sitM && chatChart && (
-              <div className="indoor-ai fschat-section">
-                <div className="xk-sec-head">💬 風水 AI 顧問（對話）</div>
-                <div className="xk-note" style={{ marginBottom: 6 }}>直接同顧問傾 —— 佢睇到呢間屋嘅玄空全盤、二十四天星（{star24Method === 'bazhai' ? '八宅遊年' : '玄道'}）同你標注嘅房間（逐山）。問顏色、材質、傢俬電器擺位、房間用途、化解催旺都得。</div>
-                <div className="ai-theme-row" style={{ marginBottom: 6 }}>
-                  <span className="ai-theme-label">語氣</span>
-                  <div className="ai-theme-chips">
-                    {['白話', '書面'].map((s) => <button key={s} type="button" className={`ai-theme-chip${chatStyle === s ? ' active' : ''}`} onClick={() => setChatStyle(s)}>{s}</button>)}
-                  </div>
-                  <span className="ai-theme-label">詳略</span>
-                  <div className="ai-theme-chips">
-                    {['簡潔', '適中', '詳細'].map((s) => <button key={s} type="button" className={`ai-theme-chip${chatDetail === s ? ' active' : ''}`} onClick={() => setChatDetail(s)}>{s}</button>)}
-                  </div>
-                </div>
-                <FengshuiChat
-                  basePayload={fsChatPayload}
-                  thread={fsThread}
-                  onAppend={fsAppend}
-                  onClear={fsClear}
-                  examples={['廚房整體用什麼顏色好？', '雪櫃放邊個山好？', '主人房床頭宜向邊個方向？', '邊個方位做書房最好？']}
-                />
-                <div className="sym-combo-note">（對話按本坐向＋天星向首＋排盤法存檔，重整頁面亦保留）</div>
+            {/* AI 分析已集中到「風水 AI」分頁（嗰度睇到玄空全盤＋二十四天星＋你標注嘅房間逐山，可直接對話） */}
+            {sitM && (
+              <div className="indoor-method-hint" style={{ marginTop: 10 }}>
+                💬 想 AI 分析呢個佈局／問顏色擺位？去「<b>風水 AI</b>」分頁 —— 佢睇到你標好嘅房間逐山，可以直接對話。
               </div>
             )}
           </div>
