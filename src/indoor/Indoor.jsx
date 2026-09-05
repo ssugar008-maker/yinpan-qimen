@@ -561,6 +561,8 @@ export default function Indoor({ onGotoXuanKong, chartLib }) {
   const applyToXuanKong = () => {
     if (facingDeg == null) return;
     try {
+      // 套用坐向要優先：清走任何舊嘅命盤庫載入記錄（唔好俾佢 override 套用嘅坐向）
+      localStorage.removeItem('mo_load_chart');
       localStorage.setItem('mo_xk_apply', JSON.stringify({ degree: Math.round(facingDeg * 10) / 10, mode: '向' }));
       window.dispatchEvent(new Event('mo-xk-apply'));
     } catch {}

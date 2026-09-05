@@ -362,6 +362,22 @@ await sleep(300);
 const angleRes = await page.evaluate(() => document.querySelector('.indoor-angle-mt')?.innerText || '');
 ok('改角度 0° → 向子山（正北）', angleRes.includes('子'), angleRes);
 
+console.log('\n[4m] 套用坐向優先（舊命盤庫記錄唔 override）');
+// 種一個舊嘅命盤庫記錄（坐甲向庚）喺 localStorage
+await page.evaluate(() => localStorage.setItem('mo_load_chart', JSON.stringify({ type: 'xuankong', state: { sitM: '甲', period: 9, flowYear: 2026, degree: '255', degMode: '向', qiXing: '下卦' } })));
+// 室內分頁撳套用（坐子向午）→ 玄空應顯示坐子向午（唔係坐甲向庚）
+await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('套用到玄空'))?.click());
+await sleep(1000);
+// 驗證玄空盤嘅坐山 select（唔係 24天星，因為 24天星跟天星向首）
+const xkSit = await page.evaluate(() => {
+  const sel = [...document.querySelectorAll('select')].find((s) => [...s.options].some((o) => o.textContent.includes('子山')));
+  return sel ? sel.value : null;
+});
+ok('套用坐子向午 → 玄空坐山＝子（唔係坐甲）', xkSit === '子', xkSit);
+// 返室內
+await page.evaluate(() => [...document.querySelectorAll('.tab')].find((b) => b.textContent.includes('室內')).click());
+await sleep(400);
+
 console.log('\n[5] Console／頁面錯誤');
 ok('無 JS 錯誤', errors.length === 0, errors);
 

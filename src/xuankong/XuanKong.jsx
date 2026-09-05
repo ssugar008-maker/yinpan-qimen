@@ -102,6 +102,8 @@ export default function XuanKong({ chartLib }) {
         if (s.doorM != null) setDoorM(s.doorM);
         if (s.birthYear) setBirthYear(s.birthYear);
         if (s.gender) setGender(s.gender);
+        // 一次性載入：還原後清走，唔好俾佢喺下次 mount 時 override「室內套用」嘅坐向
+        localStorage.removeItem('mo_load_chart');
       } catch {}
     };
     restore();
