@@ -63,7 +63,7 @@ const noMarks = () => [];
 // 使用者實例：2026-05-28 01:22，日柱壬寅、月柱癸巳
 const loveChart = paipan(2026, 5, 28, 1, 22);
 ok('實例四柱正確（壬寅日、癸巳月）', loveChart.pillars[2] === '壬寅' && loveChart.pillars[1] === '癸巳', loveChart.pillars);
-// 遠程：開盤人男、問事人女（不同性別不換陰陽）→ 月干癸落震三宮
+// 遠程：日干壬（陽）＝開盤人男 → 陽干為男、陰干為女。月干癸已是陰，男開女問不換 → 癸落震三宮
 const szRemote = shiZhuStem(loveChart, { mode: '遠程', caster: '男', querent: '女' });
 ok('遠程（男開女問）事主=癸 落震三宮', szRemote && szRemote.stem === '癸' && szRemote.palace === 3, szRemote);
 let rows = loveYongShen(loveChart, szRemote, loveChart.pillarMarkPalaces[3], noMarks);
@@ -77,9 +77,20 @@ rows = loveYongShen(loveChart, szNear, loveChart.pillarMarkPalaces[3], noMarks);
 ok('近程對方=丁（丁壬合）落巽四宮', rows[1] && rows[1].disp === '對方 丁' && rows[1].palace === 4, rows[1]);
 ok('事主宮見丙 → 桃花標註', rows[0].marks.some((m) => m.includes('見丙')), rows[0].marks);
 ok('對方宮見丁 → 桃花標註', rows[1].marks.some((m) => m.includes('見丁')), rows[1].marks);
-// 遠程同性別（女開女問）→ 月干癸換陰陽為壬 → 事主壬落坤二宮、對方丁
+// 遠程女開女問：日干壬為陽＝女，月干癸為陰，同性別需同陰陽 → 換成壬，落坤二宮、對方丁
 const szSame = shiZhuStem(loveChart, { mode: '遠程', caster: '女', querent: '女' });
-ok('遠程同性別換陰陽：事主=壬 落坤二宮', szSame && szSame.stem === '壬' && szSame.palace === 2, szSame);
+ok('遠程同性別且月干陰陽不符：事主=壬 落坤二宮', szSame && szSame.stem === '壬' && szSame.palace === 2, szSame);
+// 2026-09-28 20:50：日柱乙巳（陰）、月柱丁酉（陰）。開盤人男 → 陰干為男、陽干為女
+const samePol = paipan(2026, 9, 28, 20, 50);
+ok('同陰陽實例四柱（丁酉月、乙巳日）', samePol.pillars[1] === '丁酉' && samePol.pillars[2] === '乙巳', samePol.pillars);
+const szMF = shiZhuStem(samePol, { mode: '遠程', caster: '男', querent: '女' });
+ok('遠程男開女問（同為陰干）事主=丙', szMF && szMF.stem === '丙', szMF);
+const szMM = shiZhuStem(samePol, { mode: '遠程', caster: '男', querent: '男' });
+ok('遠程男開男問（同為陰干）事主=丁', szMM && szMM.stem === '丁', szMM);
+const szFF = shiZhuStem(samePol, { mode: '遠程', caster: '女', querent: '女' });
+ok('遠程女開女問（同為陰干）事主=丁', szFF && szFF.stem === '丁', szFF);
+const szFM = shiZhuStem(samePol, { mode: '遠程', caster: '女', querent: '男' });
+ok('遠程女開男問（同為陰干）事主=丙', szFM && szFM.stem === '丙', szFM);
 // 遠程未設定性別 → 無事主，給提示列
 rows = loveYongShen(loveChart, shiZhuStem(loveChart, { mode: '遠程', caster: '', querent: '' }), null, noMarks);
 ok('遠程未設性別 → 提示列且無落宮', rows.length === 1 && rows[0].palace === null && rows[0].role.includes('性別'), rows[0]);

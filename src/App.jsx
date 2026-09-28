@@ -41,10 +41,9 @@ function Stem({ text, type }) {
   return <div className={`stem ${stemMarkClass(type)}`}>{t(text)}</div>;
 }
 
-// 事主宮位：近程看日干、遠程看月干（同性別換陰陽），甲以值符論 —— 邏輯見 qimen/ask.js
+// 事主：近程看日干；遠程以日干陰陽對齊開盤人／問事人性別後取月干（或其对干），甲以值符論 —— 邏輯見 qimen/ask.js
 function computeShiZhu(result, querent) {
-  const r = shiZhuStem(result, querent);
-  return r ? r.palace : null;
+  return shiZhuStem(result, querent);
 }
 
 // AI 解讀記錄：以「日期時間|宮位|主題」為 key 存檔（雲端同步＋本機快取）
@@ -842,7 +841,8 @@ export default function App() {
     try { localStorage.setItem(QUERENT_KEY, JSON.stringify(next)); } catch { }
     setQuerentState(next);
   };
-  const shiZhuPalace = useMemo(() => computeShiZhu(result, querent), [result, querent]);
+  const shiZhu = useMemo(() => computeShiZhu(result, querent), [result, querent]);
+  const shiZhuPalace = shiZhu ? shiZhu.palace : null;
   const toggleGender = (key, val) => setQuerent((q) => ({ ...q, [key]: q[key] === val ? '' : val }));
 
   // ── 我的命盤庫 ──
@@ -876,7 +876,8 @@ export default function App() {
   const [form2, setForm2] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() + 1, day: n.getDate(), hour: n.getHours(), minute: n.getMinutes() }; });
   const result2 = useMemo(() => { try { return paipan(+form2.year, +form2.month, +form2.day, +form2.hour, +form2.minute); } catch { return null; } }, [form2]);
   const [cmpQm, setCmpQm] = useState({ loading: false, text: '', error: '' });
-  const shiZhuPalace2 = useMemo(() => computeShiZhu(result2, querent), [result2, querent]);
+  const shiZhu2 = useMemo(() => computeShiZhu(result2, querent), [result2, querent]);
+  const shiZhuPalace2 = shiZhu2 ? shiZhu2.palace : null;
   // 一盤的關鍵事實（對比用）
   const qmFacts = (r, szPalace) => {
     if (!r) return null;
@@ -1219,7 +1220,7 @@ export default function App() {
                   <span className="q-label">遠近程</span>
                   <div className="seg">
                     <button type="button" className={querent.mode === '近程' ? 'on' : ''} onClick={() => setQuerent({ ...querent, mode: '近程' })}>近程</button>
-                    <button type="button" className={querent.mode === '遠程' ? 'on' : ''} onClick={() => setQuerent({ ...querent, mode: '遠程' })}>遠程</button>
+                    <button type="button" className={querent.mode === '遠程' ? 'on' : ''} title="日柱天干陰陽代表開盤人性別；月柱天干按問事人性別取同陰陽之干，不符則換對干" onClick={() => setQuerent({ ...querent, mode: '遠程' })}>遠程</button>
                   </div>
                 </div>
                 <div className="q-group">
@@ -1237,8 +1238,8 @@ export default function App() {
                   </div>
                 </div>
                 <span className="q-result">
-                  {shiZhuPalace
-                    ? `事主落 ${PALACE_SHORT[shiZhuPalace]}宮（${querent.mode}）`
+                  {shiZhu
+                    ? `事主 ${t(shiZhu.stem)} 落 ${PALACE_SHORT[shiZhu.palace]}宮（${querent.mode}）`
                     : (querent.mode === '遠程' ? '設定開盤人與問事人性別後顯示事主' : '')}
                 </span>
                 <button type="button" className={`wx-toggle${showWuxing ? ' on' : ''}`} onClick={() => setShowWuxing((v) => !v)}>

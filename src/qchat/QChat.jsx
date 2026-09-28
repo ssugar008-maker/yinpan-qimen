@@ -117,14 +117,15 @@ export default function QChat() {
   const chartKey = chartTime
     ? `${chartTime.getFullYear()}-${chartTime.getMonth() + 1}-${chartTime.getDate()} ${String(chartTime.getHours()).padStart(2, '0')}:${String(chartTime.getMinutes()).padStart(2, '0')}`
     : '';
-  // 事主取宮：近程＝日干落宮；遠程＝月干（開盤人與問事人同性別換陰陽），甲以值符論 —— 與主盤自動標記同一邏輯
+  // 事主取宮：近程＝日干；遠程＝日干陰陽對齊開盤人／問事人性別後的月干（或對干），甲以值符論
   // 簡易界面固定近程（問事者本人問）；專業界面跟設定
   const querent = { mode: isPro ? qcSet.mode : '近程', caster: qcSet.caster, querent: qcSet.querent };
-  const shiZhuPalace = result ? ((shiZhuStem(result, querent) || {}).palace ?? null) : null;
+  const shiZhu = result ? shiZhuStem(result, querent) : null;
+  const shiZhuPalace = shiZhu ? shiZhu.palace : null;
   const shiGanPalace = result ? result.pillarMarkPalaces[3] : null;
   const askAnalysis = useMemo(
     () => (result && qtype ? resolveAsk({ result, qtype, querent, shiZhuPalace, shiGanPalace }) : null),
-    [result, qtype],
+    [result, qtype, querent.mode, querent.caster, querent.querent, shiZhuPalace, shiGanPalace],
   );
 
   useEffect(() => { if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' }); }, [msgs, busy]);
@@ -382,7 +383,7 @@ export default function QChat() {
               <div className="seg">
                 {['近程', '遠程'].map((v) => (
                   <button key={v} type="button" className={qcSet.mode === v ? 'on' : ''} onClick={() => setQcSet((s) => ({ ...s, mode: v }))}
-                    title={v === '近程' ? '問事人本人在場：日干為事主' : '分享給別人問事：月干取事主（同性別換陰陽）'}>{v}</button>
+                    title={v === '近程' ? '問事人本人在場：日干為事主' : '遠程：日干陰陽代表開盤人性別，月干按問事人性別取同陰陽之干'}>{v}</button>
                 ))}
               </div>
             </div>
@@ -404,7 +405,7 @@ export default function QChat() {
             </>
           )}
           {isPro && chartTime && shiZhuPalace && (
-            <span className="q-result">事主落 {PALACE_SHORT[shiZhuPalace]}宮（{qcSet.mode}）</span>
+            <span className="q-result">事主 {shiZhu ? t(shiZhu.stem) : ''} 落 {PALACE_SHORT[shiZhuPalace]}宮（{qcSet.mode}）</span>
           )}
         </div>
 
