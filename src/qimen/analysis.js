@@ -164,6 +164,13 @@ export function yongShenDisp(spec, result) {
   if (spec.kind === 'horse') return `馬星 ${result.horse.zhi}`;
   return t(spec.name);
 }
+// 遠程事主列顯示換算後的天干（月干或陰陽對干）；近程維持日干
+function querentStemDisp(result, querent, shiZhu) {
+  if (querent && querent.mode === '遠程' && shiZhu && shiZhu.stem) {
+    return shiZhu.stem === '甲' ? '事主 甲（值符）' : `事主 ${t(shiZhu.stem)}`;
+  }
+  return `日干 ${t(result.pillarStems[2])}`;
+}
 
 // 問事分析全鏈：用神落宮（含空亡轉宮標註）＋應期線索＋宮宮關係＋空亡轉宮明細＋尋物依據
 // input: { result, qtype, customYs?, querent, shiZhuPalace, shiGanPalace }
@@ -198,14 +205,16 @@ export function resolveAsk({ result, qtype, customYs = [], querent, shiZhuPalace
     [{ kind: 'hourStem', role: '所問之事（參照）' }, { kind: 'dayStem', role: '事主（參照）' }].forEach((rf) => {
       if (!customYs.some((c) => (CUSTOM_CATS.find((x) => x.id === c.cat) || {}).kind === rf.kind)) {
         const palace = locateYongShen({ kind: rf.kind }, result, shiZhuPalace);
-        rows.push({ disp: yongShenDisp({ kind: rf.kind }, result), role: rf.role, palace, marks: palace ? marksOf(palace) : [] });
+        const disp = rf.kind === 'dayStem' ? querentStemDisp(result, querent, shiZhu) : yongShenDisp({ kind: rf.kind }, result);
+        rows.push({ disp, role: rf.role, palace, marks: palace ? marksOf(palace) : [] });
       }
     });
     resolved = rows;
   } else {
     resolved = spec ? spec.ys.map((s) => {
       const palace = locateYongShen(s, result, shiZhuPalace);
-      return { disp: yongShenDisp(s, result), role: s.role, palace, marks: palace ? marksOf(palace) : [] };
+      const disp = s.kind === 'dayStem' ? querentStemDisp(result, querent, shiZhu) : yongShenDisp(s, result);
+      return { disp, role: s.role, palace, marks: palace ? marksOf(palace) : [] };
     }) : [];
   }
 

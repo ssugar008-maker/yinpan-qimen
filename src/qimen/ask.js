@@ -1,13 +1,14 @@
 // 奇門問事：用神取用的純邏輯（可獨立測試；內部值沿用引擎簡體）
 // 感情婚姻規則（依使用者指定）：
 //   對方＝事主的天干五合合干（甲己、乙庚、丙辛、丁壬、戊癸），不固定看乙庚；
-//   事主：近程看日干落宮；遠程看月干（開盤人與問事人同性別則換陰陽），甲以值符論；
+//   事主：近程看日干落宮；遠程看月干，並按日干陰陽對齊開盤人／問事人性別（不符則換陰陽對干），甲以值符論；
 //   值符為甲，甲己相合 → 事主宮或對方宮見值符時，己亦為另一伴／情人，需兼看己落宮；
 //   宮中見乙、丙、丁 → 易有桃花；見己 → 「好聽話」式的桃花。
 import { PALACE_INFO } from './symbols.js';
 
 export const STEM_HE = { 甲: '己', 己: '甲', 乙: '庚', 庚: '乙', 丙: '辛', 辛: '丙', 丁: '壬', 壬: '丁', 戊: '癸', 癸: '戊' };
 export const YINYANG_SWAP = { 甲: '乙', 乙: '甲', 丙: '丁', 丁: '丙', 戊: '己', 己: '戊', 庚: '辛', 辛: '庚', 壬: '癸', 癸: '壬' };
+const YANG_STEM = new Set(['甲', '丙', '戊', '庚', '壬']);
 const OUTER = [1, 2, 3, 4, 6, 7, 8, 9];
 const TAOHUA_STEMS = ['乙', '丙', '丁'];
 
@@ -118,13 +119,23 @@ export const CUSTOM_CATS = [
   { id: 'hourStem', label: '時干', kind: 'hourStem' },
 ];
 
-// 事主（問事人）天干與落宮：近程→日干；遠程→月干（同性別換陰陽）；甲遁旬首儀、以值符所落之宮論
+// 事主（問事人）天干與落宮。
+// 近程：日干落宮（甲已在排盤時遁旬首儀）。
+// 遠程：日柱天干的陰陽＝開盤人的性別（日干乙為陰、開盤人男 → 凡陰干代表男、陽干代表女）。
+// 月柱天干代表問事人，但必須是與問事人性別相符的那一干：
+// 與開盤人同性別 → 事主干應與日干同陰陽；不同性別 → 應為相反陰陽。
+// 月干陰陽不符則取陰陽對干（甲↔乙、丙↔丁、戊↔己、庚↔辛、壬↔癸）。甲以值符所落之宮論。
 export function shiZhuStem(result, querent) {
-  if (!result) return null;
+  if (!result || !querent) return null;
   if (querent.mode === '近程') return { stem: result.pillarStems[2], palace: result.pillarMarkPalaces[2] };
   if (!querent.caster || !querent.querent) return null; // 遠程需先設定開盤人與問事人性別
-  let stem = result.pillarStems[1];
-  if (querent.caster === querent.querent) stem = YINYANG_SWAP[stem];
+  const dayStem = result.pillars && result.pillars[2] && result.pillars[2][0];
+  const monthStem = result.pillars && result.pillars[1] && result.pillars[1][0];
+  if (!dayStem || !monthStem) return null;
+  const sameGender = querent.caster === querent.querent;
+  const samePolarity = YANG_STEM.has(dayStem) === YANG_STEM.has(monthStem);
+  // 同性別就要同陰陽；月干已經同陰陽則保留，否則換成對干
+  const stem = sameGender === samePolarity ? monthStem : YINYANG_SWAP[monthStem];
   if (stem === '甲') return { stem, palace: result.zhiFu.palace };
   const palace = stemPalace(result, stem);
   return palace ? { stem, palace } : null;

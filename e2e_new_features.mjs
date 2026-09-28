@@ -104,14 +104,14 @@ await page.evaluate(() => [...document.querySelectorAll('.querent-bar .seg')][0]
 await sleep(250);
 rows = await loveRows();
 ok('遠程未設性別 → 提示未落盤', rows.length === 1 && rows[0].palace === '未落盤' && rows[0].role.includes('性別'), rows);
-// 設定 開盤人男／問事人女（不同性別不換陰陽）→ 月干癸為事主、對方戊
+// 設定 開盤人男／問事人女（日干庚陽＝男、月干癸陰已是女，不換）→ 月干癸為事主、對方戊
 await page.evaluate(() => [...document.querySelectorAll('.querent-bar .seg')][1].querySelectorAll('button')[0].click()); // 開盤人 男
 await page.evaluate(() => [...document.querySelectorAll('.querent-bar .seg')][2].querySelectorAll('button')[1].click()); // 問事人 女
 await sleep(250);
 rows = await loveRows();
 ok('遠程男開女問 → 事主=癸', rows[0].name === '事主 癸' && rows[0].palace.startsWith('落 '), rows[0]);
 ok('對方=戊（戊癸合）', rows[1].name === '對方 戊' && rows[1].role.includes('癸戊相合'), rows[1]);
-// 同性別（女開女問）→ 癸換陰陽為壬、對方丁
+// 女開女問：日干庚陽＝女，月干癸陰不符 → 換成壬、對方丁
 await page.evaluate(() => [...document.querySelectorAll('.querent-bar .seg')][1].querySelectorAll('button')[1].click()); // 開盤人 女
 await sleep(250);
 rows = await loveRows();
